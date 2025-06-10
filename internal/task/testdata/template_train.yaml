@@ -1,0 +1,459 @@
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  labels:
+    project-id: "{{._extra.projectName}}"
+    rtx-user: "{{._extra.ownerName}}"
+    run-id: "{{._instance.ID}}"
+    task-project: "{{._extra.projectName}}"
+    task-user: "{{._extra.ownerName}}"
+    task-run-id: "{{._instance.ID}}"
+    task-id: "{{._task.ID}}"
+    task-name: "{{._task.Name}}"
+    task-uuid: "{{._task.UUID}}"
+    taskd: taskd
+  name: "{{._task.Name}}"
+  namespace: "{{._task.Namespace}}"
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: {{ ._extra.masterNum }}
+      restartPolicy: Never
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+            {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+            {{- if eq ._instance.Pool "h100"}}
+            k8s.v1.cni.cncf.io/networks: high-performance-if/cx6dx1,high-performance-if/cx6dx2,high-performance-if/cx6dx3,high-performance-if/cx6dx4,high-performance-if/cx6dx5,high-performance-if/cx6dx6,high-performance-if/cx6dx7,high-performance-if/cx6dx8
+            {{- else if eq ._instance.Pool "h100-mem-2t"}}
+            k8s.v1.cni.cncf.io/networks: high-performance-if/cx6dxf1,high-performance-if/cx6dxf2,high-performance-if/cx6dxf3,high-performance-if/cx6dxf4,high-performance-if/cx6dxf5,high-performance-if/cx6dxf6,high-performance-if/cx6dxf7,high-performance-if/cx6dxf8
+            {{- else}}
+            k8s.v1.cni.cncf.io/networks: high-performance-if/cx5dx1,high-performance-if/cx5dx2,high-performance-if/cx5dx3,high-performance-if/cx5dx4
+            {{- end }}
+            {{- end }}
+          labels:
+            project-id: "{{._extra.projectName}}"
+            rtx-user: "{{._extra.ownerName}}"
+            run-id: "{{._instance.ID}}"
+            task-project: "{{._extra.projectName}}"
+            task-user: "{{._extra.ownerName}}"
+            task-run-id: "{{._instance.ID}}"
+            task-id: "{{._task.ID}}"
+            task-name: "{{._task.Name}}"
+            task-uuid: "{{._task.UUID}}"
+            taskd: taskd
+            pod-kind: master
+            type: pytorchjob
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: aip.sangfor.com/pool
+                        operator: In
+                        values:
+                          - {{yamlValue ._instance.Pool "a800-pcie"}}
+          {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+          initContainers:
+          - name: set-dscp
+            image: registry.ai.sangfor.com/ai-sangfor/rdma:0.2
+            command: ["sh", "-c", "iptables -t mangle -A OUTPUT -j DSCP --set-dscp 26"]
+            securityContext:
+              capabilities:
+                add: ["NET_ADMIN"]
+          {{- end }}
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            - |
+              {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+              {{- if eq ._instance.Pool "h100"}}
+              export NCCL_IB_GID_INDEX=`show_gids | grep v2 | grep -v bond0 | awk '{print $3}' | head -1`
+              {{- else if eq ._instance.Pool "h100-mem-2t"}}
+              export NCCL_IB_GID_INDEX=`show_gids | grep v2 | grep -v bond0 | awk '{print $3}' | head -1`
+              {{- else}}
+              # export NCCL_IB_GID_INDEX=`show_gids | grep v1 | grep -v bond0 | awk '{print $3}' | head -1`
+              {{- end }}
+              {{- end }}
+              {{- if ._extra.conda }}
+              echo $CONDA_DIR && source ${CONDA_DIR:-/opt/conda}/etc/profile.d/conda.sh && conda info --envs && conda activate {{._extra.conda}} && {{._extra.masterCommand}}
+              {{- else }}
+              {{._extra.masterCommand}}
+              {{- end }}
+            {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+            securityContext:
+              capabilities:
+                add: [ "IPC_LOCK", "NET_ADMIN" ]
+            {{- end }}
+            env:
+            - name: TRAINING_CONDA
+              value:  {{yamlQuote ._extra.conda}}
+            {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+            - name: NCCL_DEBUG
+              value: INFO
+            - name: NCCL_IB_DISABLE
+              value: '0'
+            - name: NCCL_NET_GDR_READ
+              value: '1'
+            - name: NCCL_IB_HCA
+              value: mlx5
+            - name: NCCL_SOCKET_IFNAME
+              value: eth0
+            {{- end }}
+            {{- range $key, $value := ._extra.master.envs}}
+            - name:  {{$key}}
+              value: "{{$value}}"
+            {{- end}}
+            {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+            image: registry.ai.sangfor.com/ai-sangfor/rdma:centos-0.5
+            {{- else}}
+            image: {{yamlValue ._extra.executeImage "registry.ai.sangfor.com/ai-sangfor/code-studio:torch-2.0.0-cu117-conda4.13.0-v1.0.0"}}
+            {{- end }}
+            imagePullPolicy: IfNotPresent
+            name: pytorch
+            ports:
+            - containerPort: 22
+              name: ssh
+              protocol: TCP
+            resources:
+              requests:
+              {{- $root := . }}
+              {{- range $key, $value := ._extra.master.resources}}
+                {{- if eq $key "rdma/hca_shared_devices"}}
+                {{- if eq $root._instance.Pool "h100"}}
+                cx6/mlx5_0: 1
+                cx6/mlx5_3: 1
+                cx6/mlx5_4: 1
+                cx6/mlx5_5: 1
+                cx6/mlx5_6: 1
+                cx6/mlx5_7: 1
+                cx6/mlx5_8: 1
+                cx6/mlx5_9: 1
+                {{- else if eq $root._instance.Pool "h100-mem-2t"}}
+                cx6/mlx5_0: 1
+                cx6/mlx5_3: 1
+                cx6/mlx5_4: 1
+                cx6/mlx5_5: 1
+                cx6/mlx5_6: 1
+                cx6/mlx5_7: 1
+                cx6/mlx5_8: 1
+                cx6/mlx5_9: 1
+                {{- else}}
+                rdma/mlxcx5_0: 1
+                rdma/mlxcx5_1: 1
+                rdma/mlxcx5_2: 1
+                rdma/mlxcx5_3: 1
+                {{- end }}
+                {{- else}}
+                {{- if eq $key "memory"}}
+                {{- if eq $root._instance.Pool "h100-mem-2t"}}
+                memory: 2000000Mi
+                {{- else}}
+                {{$key}}: {{$value}}
+                {{- end }}
+                {{- else}}
+                {{$key}}: {{$value}}
+                {{- end}}
+                {{- end}}
+
+
+              {{- end}}
+              limits:
+              {{- $root := . }}
+              {{- range $key, $value := ._extra.master.resources}}
+                {{- if eq $key "rdma/hca_shared_devices"}}
+                {{- if eq $root._instance.Pool "h100"}}
+                cx6/mlx5_0: 1
+                cx6/mlx5_3: 1
+                cx6/mlx5_4: 1
+                cx6/mlx5_5: 1
+                cx6/mlx5_6: 1
+                cx6/mlx5_7: 1
+                cx6/mlx5_8: 1
+                cx6/mlx5_9: 1
+                {{- else if eq $root._instance.Pool "h100-mem-2t"}}
+                cx6/mlx5_0: 1
+                cx6/mlx5_3: 1
+                cx6/mlx5_4: 1
+                cx6/mlx5_5: 1
+                cx6/mlx5_6: 1
+                cx6/mlx5_7: 1
+                cx6/mlx5_8: 1
+                cx6/mlx5_9: 1
+                {{- else}}
+                rdma/mlxcx5_0: 1
+                rdma/mlxcx5_1: 1
+                rdma/mlxcx5_2: 1
+                rdma/mlxcx5_3: 1
+                {{- end }}
+                {{- else}}
+                {{- if eq $key "memory"}}
+                {{- if eq $root._instance.Pool "h100-mem-2t"}}
+                memory: 2000000Mi
+                {{- else}}
+                {{$key}}: {{$value}}
+                {{- end }}
+                {{- else}}
+                {{$key}}: {{$value}}
+                {{- end}}
+                {{- end}}
+
+              {{- end}}
+            volumeMounts:
+            {{- range ._extra.mounts}}
+            - mountPath: {{.mountPath}}
+              name: {{.volumeName}}
+            {{- end}}
+            - mountPath: /etc/localtime
+              name: tz-config
+            - mountPath: /dev/shm
+              name: dshm
+            workingDir: /home/jovyan/
+          restartPolicy: Never
+          schedulerName: gpu-scheduler-plugins
+          volumes:
+          {{- range ._extra.mounts}}
+          - name: {{.volumeName}}
+            {{- if eq .type "nfs"}}
+            nfs:
+              server: {{.server}}
+              path: {{.serverPath}}
+            {{- else if eq .type "pvc"}}
+            persistentVolumeClaim:
+              claimName: {{.serverPath}}
+            {{- else if eq .type "hostpath"}}
+            hostPath:
+              path: {{.serverPath}}
+              type: DirectoryOrCreate
+            {{- end}}
+          {{- end}}
+          - hostPath:
+              path: /usr/share/zoneinfo/Asia/Shanghai
+            name: tz-config
+          - emptyDir:
+              medium: Memory
+            name: dshm
+    Worker:
+      replicas: {{._extra.workerNum}}
+      restartPolicy: Never
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+            {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+            {{- if eq ._instance.Pool "h100"}}
+            k8s.v1.cni.cncf.io/networks: high-performance-if/cx6dx1,high-performance-if/cx6dx2,high-performance-if/cx6dx3,high-performance-if/cx6dx4,high-performance-if/cx6dx5,high-performance-if/cx6dx6,high-performance-if/cx6dx7,high-performance-if/cx6dx8
+            {{- else if eq ._instance.Pool "h100-mem-2t"}}
+            k8s.v1.cni.cncf.io/networks: high-performance-if/cx6dxf1,high-performance-if/cx6dxf2,high-performance-if/cx6dxf3,high-performance-if/cx6dxf4,high-performance-if/cx6dxf5,high-performance-if/cx6dxf6,high-performance-if/cx6dxf7,high-performance-if/cx6dxf8
+            {{- else}}
+            k8s.v1.cni.cncf.io/networks: high-performance-if/cx5dx1,high-performance-if/cx5dx2,high-performance-if/cx5dx3,high-performance-if/cx5dx4
+            {{- end }}
+            {{- end }}
+          labels:
+            project-id: "{{._extra.projectName}}"
+            rtx-user: "{{._extra.ownerName}}"
+            run-id: "{{._instance.ID}}"
+            task-project: "{{._extra.projectName}}"
+            task-user: "{{._extra.ownerName}}"
+            task-run-id: "{{._instance.ID}}"
+            task-id: "{{._task.ID}}"
+            task-name: "{{._task.Name}}"
+            task-uuid: "{{._task.UUID}}"
+            taskd: taskd
+            pod-kind: worker
+            type: pytorchjob
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: aip.sangfor.com/pool
+                        operator: In
+                        values:
+                          - {{yamlValue ._instance.Pool "a800-pcie"}}
+          {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+          initContainers:
+          - name: set-dscp
+            image: registry.ai.sangfor.com/ai-sangfor/rdma:0.2
+            command: ["sh", "-c", "iptables -t mangle -A OUTPUT -j DSCP --set-dscp 26"]
+            securityContext:
+              capabilities:
+                add: ["NET_ADMIN"]
+          {{- end }}
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            - |
+              {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+              {{- if eq ._instance.Pool "h100"}}
+              export NCCL_IB_GID_INDEX=`show_gids | grep v2 | grep -v bond0 | awk '{print $3}' | head -1`
+              {{- else if eq ._instance.Pool "h100-mem-2t"}}
+              export NCCL_IB_GID_INDEX=`show_gids | grep v2 | grep -v bond0 | awk '{print $3}' | head -1`
+              {{- else}}
+              # export NCCL_IB_GID_INDEX=`show_gids | grep v1 | grep -v bond0 | awk '{print $3}' | head -1`
+              {{- end }}
+              {{- end }}
+              {{- if ._extra.conda }}
+              echo $CONDA_DIR && source ${CONDA_DIR:-/opt/conda}/etc/profile.d/conda.sh && conda info --envs && conda activate {{._extra.conda}} && {{._extra.workerCommand}}
+              {{- else }}
+              {{._extra.workerCommand}}
+              {{- end }}
+            {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+            securityContext:
+              capabilities:
+                add: [ "IPC_LOCK", "NET_ADMIN" ]
+            {{- end }}
+            env:
+            - name: TRAINING_CONDA
+              value: {{yamlQuote ._extra.conda}}
+            {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+            - name: NCCL_DEBUG
+              value: INFO
+            - name: NCCL_IB_DISABLE
+              value: '0'
+            - name: NCCL_NET_GDR_READ
+              value: '1'
+            - name: NCCL_IB_HCA
+              value: mlx5
+            - name: NCCL_SOCKET_IFNAME
+              value: eth0
+            {{- end }}
+            {{- range $key, $value := ._extra.worker.envs}}
+            - name:  {{$key}}
+              value: "{{$value}}"
+            {{- end}}
+            name: pytorch
+            {{- if hasKey ._extra.master.resources "rdma/hca_shared_devices" }}
+            image: registry.ai.sangfor.com/ai-sangfor/rdma:centos-0.5
+            {{- else}}
+            image: {{yamlValue ._extra.executeImage "registry.ai.sangfor.com/ai-sangfor/code-studio:torch-2.0.0-cu117-conda4.13.0-v1.0.0"}}
+            {{- end }}
+            imagePullPolicy: IfNotPresent
+            ports:
+            - containerPort: 22
+              name: ssh
+              protocol: TCP
+            resources:
+              requests:
+              {{- $root := . }}
+              {{- range $key, $value := ._extra.master.resources}}
+                {{- if eq $key "rdma/hca_shared_devices"}}
+                {{- if eq $root._instance.Pool "h100"}}
+                cx6/mlx5_0: 1
+                cx6/mlx5_3: 1
+                cx6/mlx5_4: 1
+                cx6/mlx5_5: 1
+                cx6/mlx5_6: 1
+                cx6/mlx5_7: 1
+                cx6/mlx5_8: 1
+                cx6/mlx5_9: 1
+                {{- else if eq $root._instance.Pool "h100-mem-2t"}}
+                cx6/mlx5_0: 1
+                cx6/mlx5_3: 1
+                cx6/mlx5_4: 1
+                cx6/mlx5_5: 1
+                cx6/mlx5_6: 1
+                cx6/mlx5_7: 1
+                cx6/mlx5_8: 1
+                cx6/mlx5_9: 1
+                {{- else}}
+                rdma/mlxcx5_0: 1
+                rdma/mlxcx5_1: 1
+                rdma/mlxcx5_2: 1
+                rdma/mlxcx5_3: 1
+                {{- end }}
+                {{- else}}
+                {{- if eq $key "memory"}}
+                {{- if eq $root._instance.Pool "h100-mem-2t"}}
+                memory: 2000000Mi
+                {{- else}}
+                {{$key}}: {{$value}}
+                {{- end }}
+                {{- else}}
+                {{$key}}: {{$value}}
+                {{- end}}
+                {{- end}}
+
+              {{- end}}
+              limits:
+              {{- $root := . }}
+              {{- range $key, $value := ._extra.master.resources}}
+                {{- if eq $key "rdma/hca_shared_devices"}}
+                {{- if eq $root._instance.Pool "h100"}}
+                cx6/mlx5_0: 1
+                cx6/mlx5_3: 1
+                cx6/mlx5_4: 1
+                cx6/mlx5_5: 1
+                cx6/mlx5_6: 1
+                cx6/mlx5_7: 1
+                cx6/mlx5_8: 1
+                cx6/mlx5_9: 1
+                {{- else if eq $root._instance.Pool "h100-mem-2t"}}
+                cx6/mlx5_0: 1
+                cx6/mlx5_3: 1
+                cx6/mlx5_4: 1
+                cx6/mlx5_5: 1
+                cx6/mlx5_6: 1
+                cx6/mlx5_7: 1
+                cx6/mlx5_8: 1
+                cx6/mlx5_9: 1
+                {{- else}}
+                rdma/mlxcx5_0: 1
+                rdma/mlxcx5_1: 1
+                rdma/mlxcx5_2: 1
+                rdma/mlxcx5_3: 1
+                {{- end }}
+                {{- else}}
+                {{- if eq $key "memory"}}
+                {{- if eq $root._instance.Pool "h100-mem-2t"}}
+                memory: 2000000Mi
+                {{- else}}
+                {{$key}}: {{$value}}
+                {{- end }}
+                {{- else}}
+                {{$key}}: {{$value}}
+                {{- end}}
+                {{- end}}
+
+              {{- end}}
+            volumeMounts:
+            {{- range ._extra.mounts}}
+            - mountPath: {{.mountPath}}
+              name: {{.volumeName}}
+            {{- end}}
+            - mountPath: /etc/localtime
+              name: tz-config
+            - mountPath: /dev/shm
+              name: dshm
+            workingDir: /home/jovyan/
+          restartPolicy: Never
+          schedulerName: gpu-scheduler-plugins
+          volumes:
+          {{- range ._extra.mounts}}
+          - name: {{.volumeName}}
+            {{- if eq .type "nfs"}}
+            nfs:
+              server: {{.server}}
+              path: {{.serverPath}}
+            {{- else if eq .type "pvc"}}
+            persistentVolumeClaim:
+              claimName: {{.serverPath}}
+            {{- else if eq .type "hostpath"}}
+            hostPath:
+              path: {{.serverPath}}
+              type: DirectoryOrCreate
+            {{- end}}
+          {{- end}}
+          - hostPath:
+              path: /usr/share/zoneinfo/Asia/Shanghai
+            name: tz-config
+          - emptyDir:
+              medium: Memory
+            name: dshm
+  runPolicy:
+    backoffLimit: 0

@@ -1,0 +1,105 @@
+apiVersion: kubeflow.org/v1
+kind: TFJob
+metadata:
+  labels:
+    task-project: "{{._extra.projectName}}"
+    task-user: "{{._extra.ownerName}}"
+    task-run-id: "{{._instance.ID}}"
+    task-id: "{{._task.ID}}"
+    task-name: "{{._task.Name}}"
+    task-uuid: "{{._task.UUID}}"
+    taskd: taskd
+  name: "{{._task.Name}}"
+  namespace: "{{._task.Namespace}}"
+spec:
+  tfReplicaSpecs:
+    Master:
+      replicas: {{ ._extra.masterNum }}
+      restartPolicy: Never
+      template:
+        metadata:
+          labels:
+            task-project: "{{._extra.projectName}}"
+            task-user: "{{._extra.ownerName}}"
+            task-run-id: "{{._instance.ID}}"
+            task-id: "{{._task.ID}}"
+            task-name: "{{._task.Name}}"
+            task-uuid: "{{._task.UUID}}"
+            taskd: taskd
+            type: tfjob
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: aip.sangfor.com/pool
+                        operator: In
+                        values:
+                          - {{yamlValue ._instance.Pool "a800-pcie"}}
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            {{- if ._extra.conda }}
+            - echo $CONDA_DIR && source ${CONDA_DIR:-/opt/conda}/etc/profile.d/conda.sh && conda info --envs && conda activate {{._extra.conda}} && {{._extra.masterCommand}}
+            {{- else }}
+            - {{._extra.masterCommand}}
+            {{- end }}
+            env:
+            - name: TRAINING_CONDA
+              value:  {{yamlQuote ._extra.conda}}
+            {{- range $key, $value := ._extra.master.envs}}
+            - name:  {{$key}}
+              value: "{{$value}}"
+            {{- end}}
+            name: tensorflow
+            image: {{yamlValue ._extra.executeImage "registry.ai.sangfor.com/ai-sangfor/code-studio:tensorflow2.12.0-gpu-conda4.13.0-v1.0.0-2024.01.05"}}
+            imagePullPolicy: IfNotPresent
+            resources:
+              requests:
+              {{- range $key, $value := ._extra.master.resources}}
+                {{$key}}: {{$value}}
+              {{- end}}
+              limits:
+              {{- range $key, $value := ._extra.master.resources}}
+                {{$key}}: {{$value}}
+              {{- end}}
+            volumeMounts:
+            {{- range ._extra.mounts}}
+            - mountPath: {{.mountPath}}
+              name: {{.volumeName}}
+            {{- end}}
+            - mountPath: /etc/localtime
+              name: tz-config
+            - mountPath: /dev/shm
+              name: dshm
+            workingDir: /home/jovyan/
+          restartPolicy: Never
+          schedulerName: default-scheduler
+          volumes:
+          {{- range ._extra.mounts}}
+          - name: {{.volumeName}}
+            {{- if eq .type "nfs"}}
+            nfs:
+              server: {{.server}}
+              path: {{.serverPath}}
+            {{- else if eq .type "pvc"}}
+            persistentVolumeClaim:
+              claimName: {{.serverPath}}
+            {{- else if eq .type "hostpath"}}
+            hostPath:
+              path: {{.serverPath}}
+              type: DirectoryOrCreate
+            {{- end}}
+          {{- end}}
+          - hostPath:
+              path: /usr/share/zoneinfo/Asia/Shanghai
+            name: tz-config
+          - emptyDir:
+              medium: Memory
+            name: dshm
+  runPolicy:
+    backoffLimit: 0
+
+

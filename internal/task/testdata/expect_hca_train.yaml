@@ -1,0 +1,334 @@
+
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "for-test-name-sva-0"
+  namespace: "for-test-namespace"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: "for-test-name-scr-0"
+  namespace: "for-test-namespace"
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/exec"]
+  verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: "for-test-name-clb-0"
+  namespace: "for-test-namespace"
+subjects:
+- kind: ServiceAccount
+  name: "for-test-name-sva-0"
+  namespace: "for-test-namespace"
+roleRef:
+  kind: ClusterRole
+  name: "for-test-name-scr-0"
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: "for-test-name-spvc-0"
+  namespace: "for-test-namespace"
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: "for-test-name-cm-0"
+  namespace: "for-test-namespace"
+data:
+  run-commands.sh: |
+    #!/bin/sh
+
+    namespace=for-test-namespace
+    train_name=for-test-name
+    worker_num=2
+
+    echo "params(namespace) = $namespace"
+    echo "params(train_name) = $train_name"
+    echo "params(worker_num) = $worker_num"
+
+    # Function to get master IP
+    get_master_ip() {
+        if [ -f /mnt/shared/master-ready ]; then
+            masterip=$(cat /mnt/shared/master-ready)
+        else
+            masterip=""
+        fi
+    }
+
+    # Loop until masterip is not empty
+    while true; do
+        get_master_ip
+        if [ -n "$masterip" ]; then
+            break
+        fi
+        echo "Waiting for master IP..."
+        sleep 5
+    done
+
+    echo "get master ip finished!!! ip: $masterip"
+
+    # Function to update /etc/hosts in the pod
+    update_hosts() {
+        pod=$1
+        while true; do
+            kubectl exec "$pod" -n "$namespace" -c init-pytorch -- /bin/sh -c "echo '$masterip  $train_name-master-0' >> /etc/hosts"
+            if [ $? -eq 0 ]; then
+                break
+            fi
+            echo "Failed to update /etc/hosts for pod $pod. Retrying..."
+            sleep 5
+        done
+    }
+
+    # Get the list of pods and update /etc/hosts
+    i=0
+    while [ $i -lt $worker_num ]; do
+        update_hosts "$train_name-worker-$i" &
+        i=$((i + 1))
+    done
+
+    # Wait for all background jobs to finish
+    wait
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: "for-test-name-rdma"
+  namespace: "for-test-namespace"
+  annotations:
+    sidecar.istio.io/inject: "false"
+spec:
+  containers:
+  - command: ["/bin/sh", "-c", "/mnt/scripts/run-commands.sh"]
+    image: docker.sangfor.com/cicd_2740/busybox
+    name: pytorch
+    volumeMounts:
+    - mountPath: /mnt/shared
+      name: shared-volume
+    - mountPath: /mnt/scripts
+      name: script-volume
+  serviceAccountName: "for-test-name-sva-0"
+  restartPolicy: Never
+  volumes:
+  - name: shared-volume
+    persistentVolumeClaim:
+      claimName: "for-test-name-spvc-0"
+  - name: script-volume
+    configMap:
+      name: "for-test-name-cm-0"
+      defaultMode: 0777
+---
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  labels:
+    project-id: "aip"
+    rtx-user: "zhangzhaojin40458"
+    run-id: "0"
+    task-project: "aip"
+    task-user: "zhangzhaojin40458"
+    task-run-id: "0"
+    task-id: "0"
+    task-name: "for-test-name"
+    task-uuid: ""
+    taskd: taskd
+  name: "for-test-name"
+  namespace: "for-test-namespace"
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+            k8s.v1.cni.cncf.io/networks: default/macvlan-cx5-bond-conf
+          labels:
+            project-id: "aip"
+            rtx-user: "zhangzhaojin40458"
+            run-id: "0"
+            task-project: "aip"
+            task-user: "zhangzhaojin40458"
+            task-run-id: "0"
+            task-id: "0"
+            task-name: "for-test-name"
+            task-uuid: ""
+            taskd: taskd
+            pod-kind: master
+            type: pytorchjob
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: aip.sangfor.com/pool
+                        operator: In
+                        values:
+                          - a800-nvlink-100g
+          initContainers:
+          - name: init-c
+            image: busybox
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo `ip addr show net1 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1` >> /mnt/shared/master-ready
+            volumeMounts:
+            - mountPath: /mnt/shared
+              name: shared-volume
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            - |
+              sleep infinity
+            securityContext:
+              capabilities:
+                add: [ "IPC_LOCK" ]
+            env:
+            - name: TRAINING_CONDA
+              value:  ""
+            image: registry.ai.sangfor.com/ai-sangfor/code-studio:torch-2.1-cu121-v1.0.0
+            imagePullPolicy: IfNotPresent
+            name: pytorch
+            ports:
+            - containerPort: 22
+              name: ssh
+              protocol: TCP
+            resources:
+              requests:
+                cpu: 1
+                memory: 1024Mi
+                rdma/hca_shared_devices: 1
+              limits:
+                cpu: 1
+                memory: 1024Mi
+                rdma/hca_shared_devices: 1
+            volumeMounts:
+            - mountPath: /mnt/project/aip
+              name: hostpath-c0f34dfe-d45e-4ed8-a212-315392b50e69
+            - mountPath: /etc/localtime
+              name: tz-config
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /mnt/shared
+              name: shared-volume
+            workingDir: /home/jovyan/
+          restartPolicy: Never
+          schedulerName: gpu-scheduler-plugins
+          volumes:
+          - name: hostpath-c0f34dfe-d45e-4ed8-a212-315392b50e69
+            hostPath:
+              path: /mnt/project/aip
+              type: DirectoryOrCreate
+          - name: shared-volume
+            persistentVolumeClaim:
+              claimName: "for-test-name-spvc-0"
+          - hostPath:
+              path: /usr/share/zoneinfo/Asia/Shanghai
+            name: tz-config
+          - emptyDir:
+              medium: Memory
+            name: dshm
+    Worker:
+      replicas: 2
+      restartPolicy: Never
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+            k8s.v1.cni.cncf.io/networks: default/macvlan-cx5-bond-conf
+          labels:
+            project-id: "aip"
+            rtx-user: "zhangzhaojin40458"
+            run-id: "0"
+            task-project: "aip"
+            task-user: "zhangzhaojin40458"
+            task-run-id: "0"
+            task-id: "0"
+            task-name: "for-test-name"
+            task-uuid: ""
+            taskd: taskd
+            pod-kind: worker
+            type: pytorchjob
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: aip.sangfor.com/pool
+                        operator: In
+                        values:
+                          - a800-nvlink-100g
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            - |
+              export MASTER_ADDR=`cat /mnt/shared/master-ready`
+              sleep infinity
+            securityContext:
+              capabilities:
+                add: [ "IPC_LOCK" ]
+            env:
+            - name: TRAINING_CONDA
+              value: ""
+            name: pytorch
+            image: registry.ai.sangfor.com/ai-sangfor/code-studio:torch-2.1-cu121-v1.0.0
+            imagePullPolicy: IfNotPresent
+            ports:
+            - containerPort: 22
+              name: ssh
+              protocol: TCP
+            resources:
+              requests:
+                cpu: 1
+                memory: 1024Mi
+                rdma/hca_shared_devices: 1
+              limits:
+                cpu: 1
+                memory: 1024Mi
+                rdma/hca_shared_devices: 1
+            volumeMounts:
+            - mountPath: /mnt/project/aip
+              name: hostpath-c0f34dfe-d45e-4ed8-a212-315392b50e69
+            - mountPath: /mnt/shared
+              name: shared-volume
+            - mountPath: /etc/localtime
+              name: tz-config
+            - mountPath: /dev/shm
+              name: dshm
+            workingDir: /home/jovyan/
+          restartPolicy: Never
+          schedulerName: gpu-scheduler-plugins
+          volumes:
+          - name: hostpath-c0f34dfe-d45e-4ed8-a212-315392b50e69
+            hostPath:
+              path: /mnt/project/aip
+              type: DirectoryOrCreate
+          - hostPath:
+              path: /usr/share/zoneinfo/Asia/Shanghai
+            name: tz-config
+          - name: shared-volume
+            persistentVolumeClaim:
+              claimName: "for-test-name-spvc-0"
+          - emptyDir:
+              medium: Memory
+            name: dshm
+  runPolicy:
+    backoffLimit: 0

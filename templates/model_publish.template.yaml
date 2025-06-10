@@ -1,0 +1,94 @@
+# 参数：{{._extra.project}} {{._extra.name}} {{._extra.timestamp}} 
+# {{._extra.model_path}} {{._extra.model_server}} {{._extra.model_version}} {{._extra.container_image}}
+# 镜像：docker.sangfor.com/cicd_2740/model-infer/aip_crypto:xaas-v1.0.5
+# 挂载模型
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-publish-pv-{{._extra.timestamp}}
+  namespace: model-job-ns  # 提前创建一个专属的命名空间
+  labels:
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Delete
+  nfs:
+    path: {{._extra.model_path}}  # /xxx/project/name/model_version/
+    server: {{._extra.model_server}}
+  mountOptions:
+    - "nolock"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-publish-pvc-{{._extra.timestamp}}
+  namespace: model-job-ns
+  labels:
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: {{._extra.project}}-{{._extra.name}}-publish-pv-{{._extra.timestamp}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-publish-job-{{._extra.timestamp}}
+  namespace: model-job-ns
+  labels: 
+    task-project: "{{._extra.projectName}}"
+    task-user: "{{._extra.ownerName}}"
+    task-run-id: "{{._instance.ID}}"
+    task-id: "{{._task.ID}}"
+    task-name: "{{._task.Name}}"
+    task-uuid: "{{._task.UUID}}"
+    taskd: taskd
+    pod_name: {{._extra.project}}-{{._extra.name}}-publish-job-{{._extra.timestamp}}
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  nodeSelector:
+    nodeId: {{._extra.node_id}}
+  restartPolicy: Never
+  volumes:
+  - name: model-files
+    persistentVolumeClaim:
+      claimName: {{._extra.project}}-{{._extra.name}}-publish-pvc-{{._extra.timestamp}}
+  containers:
+  - name: {{._extra.project}}-{{._extra.name}}-publish-job-{{._extra.timestamp}}
+    image: {{._extra.container_image}}
+    command: ["/bin/bash", "-c"]
+    args: 
+    - |
+      source ~/.bashrc
+      mkdir /workspace
+      # 模型目录写入一个模型描述的json文件，用于千流CD保存模型至生产环境
+      cat > /workspace/model-description.txt << EOF
+      path={{._extra.save_path}}
+      immediate={{._extra.immediate}}
+      publish_uuid={{._extra.publish_uuid}}
+      EOF
+      cp -r /home/model-files/* /workspace
+      sh /etc/build/build.sh /workspace {{._extra.publish_uuid}}
+      # 上传部署yaml
+      python3 /etc/build/save_yaml.py {{._extra.yaml_txt}}
+      sfspm upload ./deploy.yaml model deploy-yaml {{._extra.publish_uuid}}
+      # 提交工单  [新增提交工单命令参数 20231016_11:47]
+      sleep 6
+      /etc/build/ipd {{._extra.submit_order_cmd}}
+      if [ $? != 0 ]; then
+        echo "ERROR: 模型推送至千流研发仓失败...." >&1
+        exit 1
+      fi
+    env:
+    - name: pod_name
+      value: {{._extra.project}}-{{._extra.name}}-publish-job-{{._extra.timestamp}}      
+    volumeMounts:
+    - name: model-files
+      mountPath: /home/model-files
+

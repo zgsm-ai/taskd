@@ -1,0 +1,203 @@
+# 参数：{{._extra.project}} {{._extra.name}} {{._extra.cuda_version}} {{._extra.python_version}} 
+# {{._extra.model_image_name}} {{._extra.timestamp}} {{._extra.git_url}} {{._extra.git_commit_id}} 
+# {{._extra.git_code_dir}} {{._extra.container_image}}
+# docker.sangfor.com/cicd_2740/model-infer/docker:git2.40-v1.0.5[默认容器镜像]
+# 挂载构建镜像的一些文件 如Miniconda[管理python环境] 修改后的seldon-core-microservice等等
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-image-files-pv-{{._extra.timestamp}}
+  namespace: model-job-ns  # 提前创建一个专属的命名空间
+  labels:
+    randomVersion: {{._extra.randomVersion}}  
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Delete
+  nfs:
+    path: /sf/model/model-job/build-image/  # 目前固定放在该nfs上
+    server: 10.72.1.225
+  mountOptions:
+    - "nolock"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-image-files-pvc-{{._extra.timestamp}}
+  namespace: model-job-ns
+  labels:
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: {{._extra.project}}-{{._extra.name}}-image-files-pv-{{._extra.timestamp}}
+---
+# 使用configmap配置Dockerfile
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-image-cm-{{._extra.timestamp}}
+  namespace: model-job-ns
+  labels:
+    randomVersion: {{._extra.randomVersion}}
+data:
+  Dockerfile: |
+    FROM docker.sangfor.com/cicd_2740/model-infer/nvidia:{{._extra.cuda_version}}.0-devel-ubuntu20.04
+    LABEL maintainer="AI Platform Group <jmc25104>"
+    LABEL version="v1.0"
+    LABEL description="Build Model Interface Images"
+
+    # setting workspace
+    WORKDIR /workspace
+
+    # setting encoding
+    ENV LANG C.UTF-8
+    ENV LC_ALL C.UTF-8
+
+    # setting sangfor source
+    RUN mv /etc/apt/sources.list /etc/apt/sources.list.bak
+    COPY sources.list /etc/apt/
+    RUN echo "deb http://mirrors.sangfor.com/nexus/repository/developer-nvidia/compute/cuda/repos/ubuntu2004/x86_64 /" > /etc/apt/sources.list.d/cuda.list
+
+    # install tzdata, sync timzone
+    ENV DEBIAN_FRONTEND=noninteractive
+    RUN apt-get update && apt-get install -y tzdata && apt-get install -y vim
+
+    # setting timezone
+    ENV TIME_ZONE Asia/Shanghai
+    RUN ln -snf /usr/share/zoneinfo/$TIME_ZONE /etc/localtime && echo $TIME_ZONE > /etc/timezone  \
+        && dpkg-reconfigure -f noninteractive tzdata
+
+    # install miniconda
+    COPY Miniconda3-py38_23.5.2-0-Linux-x86_64.sh /workspace/
+    RUN /bin/bash /workspace/Miniconda3-py38_23.5.2-0-Linux-x86_64.sh -b -p /miniconda/  && rm -rf /workspace/Miniconda3-py38_23.5.2-0-Linux-x86_64.sh
+    ENV PATH="/miniconda/bin:{{._extra.PATH}}"
+
+    # setting conda's sangfor source
+    COPY .condarc /root/
+
+    # create conda env and activate conda env
+    RUN conda create -n default_env python={{._extra.python_version}}
+    SHELL ["conda", "run", "-n", "default_env", "/bin/bash", "-c"]
+
+    # setting dir permissions
+    RUN chown -R 8888:8888 /miniconda && chown -R 8888:8888 /workspace && mkdir /.cache && chown -R 8888:8888 /.cache
+
+    # install seldon-core
+    COPY model_infer-1.0.0.post20231028.dev0-py3-none-any.whl /workspace/
+    RUN pip install /workspace/model_infer-1.0.0.post20231028.dev0-py3-none-any.whl -i http://mirrors.sangfor.org/pypi/simple --trusted-host mirrors.sangfor.org
+    RUN rm -rf /workspace/model_infer-1.0.0.post20231028.dev0-py3-none-any.whl
+
+    # install user's model requirements
+    COPY /infer-codes/requirements.txt /workspace
+    RUN pip install -r /workspace/requirements.txt -i http://mirrors.sangfor.org/pypi/simple --trusted-host mirrors.sangfor.org
+    RUN rm -rf /workspace/requirements.txt
+    
+    # copy user infer code
+    COPY /infer-codes/ /workspace
+    
+    # setting user, aim to match deplotment framework seldon-core
+    USER 8888
+
+    # moniter seldon-core-microservice port
+    EXPOSE 9000
+    EXPOSE 9500
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-image-job-{{._extra.timestamp}}
+  namespace: model-job-ns
+  labels: 
+    task-project: "{{._extra.projectName}}"
+    task-user: "{{._extra.ownerName}}"
+    task-run-id: "{{._instance.ID}}"
+    task-id: "{{._task.ID}}"
+    task-name: "{{._task.Name}}"
+    task-uuid: "{{._task.UUID}}"
+    taskd: taskd
+    pod_name: {{._extra.project}}-{{._extra.name}}-image-job-{{._extra.timestamp}}
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  nodeSelector:
+    nodeId: {{._extra.node_id}}
+  restartPolicy: Never
+  volumes:
+  - name: docker-socket
+    hostPath:
+      path: /var/run/docker.sock
+  - name: image-files
+    persistentVolumeClaim:
+      claimName: {{._extra.project}}-{{._extra.name}}-image-files-pvc-{{._extra.timestamp}}
+  - name: dockerfile
+    configMap:
+      name: {{._extra.project}}-{{._extra.name}}-image-cm-{{._extra.timestamp}}
+  containers:
+  - name: {{._extra.project}}-{{._extra.name}}-image-job-{{._extra.timestamp}}
+    resources:
+      requests:
+        nvidia.com/gpu: 1
+      limits:
+        nvidia.com/gpu: 1
+    image: {{._extra.container_image}}
+    command: ["/bin/sh", "-c"]
+    args: 
+    - |
+      # 拉取用户侧与模型关联的代码
+      cat > /etc/resolv.conf << EOF
+      nameserver 200.200.10.199
+      nameserver 10.8.8.8
+      nameserver 10.6.6.6
+      EOF
+      mkdir /temp
+      mkdir -p /home/build-image/
+      git clone {{._extra.git_url}} /temp 
+      cd /temp 
+      git checkout {{._extra.git_commit_id}}
+      if [ "{{._extra.git_code_dir}}" != " " ]; then
+        cd /temp/{{._extra.git_code_dir}}
+      fi
+      mkdir /home/build-image/infer-codes/
+      cp -rf ./* /home/build-image/infer-codes/
+      rm -rf /temp
+      if [ $? != 0 ]; then
+        echo "ERROR: 构建镜像失败" >&1
+      fi
+      # 拉取目标cuda镜像
+      docker pull docker.sangfor.com/cicd_2740/model-infer/nvidia:{{._extra.cuda_version}}.0-devel-ubuntu20.04
+      cd /home/build-image/
+      cp /home/config/Dockerfile .
+      cp /home/image-files/* .
+      cp /home/image-files/.condarc .
+      if [ $? != 0 ]; then
+        echo "ERROR: 构建镜像失败" >&1
+        exit 1
+      fi
+      # 执行构建镜像的操作
+      docker build -t {{._extra.model_image_name}} .
+      # 验证上述命令是否成功，若成功则推送镜像至千流研发仓(三个月会自动清理)、删除本地临时镜像
+      if [ $? -eq 0 ]; then
+        docker login docker.sangfor.com -u product_2740_0c3e70 -p b3b72dc0ea5cf55c
+        docker push {{._extra.model_image_name}}
+        docker rmi {{._extra.model_image_name}}
+        echo "INFO: 构建镜像成功" >&1
+      else
+        echo "ERROR: 构建镜像失败，请重新构建" >&1
+        exit 1
+      fi
+    env:
+    - name: pod_name
+      value: {{._extra.project}}-{{._extra.name}}-image-job-{{._extra.timestamp}}      
+    volumeMounts:
+    - name: docker-socket
+      mountPath: /var/run/docker.sock
+    - name: image-files
+      mountPath: /home/image-files
+    - name: dockerfile
+      mountPath: /home/config
+
