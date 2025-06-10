@@ -1,0 +1,35 @@
+# 参数：{{._extra.project}} {{._extra.name}} {{._extra.timestamp}} {{._extra.model_path}} {{._extra.model_server}} {{._extra.model_version}} {{._extra.container_image}}
+# 镜像：docker.sangfor.com/cicd_2740/model-infer/aip_crypto:xaas-v1.0.5
+# 挂载模型
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-permit-job-{{._extra.timestamp}}
+  namespace: model-job-ns
+  labels: 
+    task-project: "{{._extra.projectName}}"
+    task-user: "{{._extra.ownerName}}"
+    task-run-id: "{{._instance.ID}}"
+    task-id: "{{._task.ID}}"
+    task-name: "{{._task.Name}}"
+    task-uuid: "{{._task.UUID}}"
+    taskd: taskd
+    pod_name: {{._extra.project}}-{{._extra.name}}-permit-job-{{._extra.timestamp}}
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  nodeSelector:
+    nodeId: {{._extra.node_id}}
+  restartPolicy: Never
+  containers:
+  - name: {{._extra.project}}-{{._extra.name}}-permit-job-{{._extra.timestamp}}
+    image: {{._extra.container_image}}
+    command: ["/bin/bash", "-c"]
+    args: 
+    - |
+      source ~/.bashrc
+      # 提交工单  [新增提交工单命令参数 20231016_11:47]
+      /etc/build/ipd {{._extra.submit_order_cmd}}
+    env:
+    - name: pod_name
+      value: {{._extra.project}}-{{._extra.name}}-permit-job-{{._extra.timestamp}}      
+

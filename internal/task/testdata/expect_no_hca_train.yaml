@@ -1,0 +1,172 @@
+
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  labels:
+    project-id: "aip"
+    rtx-user: "zhangzhaojin40458"
+    run-id: "0"
+    task-project: "aip"
+    task-user: "zhangzhaojin40458"
+    task-run-id: "0"
+    task-id: "0"
+    task-name: "for-test-name"
+    task-uuid: ""
+    taskd: taskd
+  name: "for-test-name"
+  namespace: "for-test-namespace"
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+          labels:
+            project-id: "aip"
+            rtx-user: "zhangzhaojin40458"
+            run-id: "0"
+            task-project: "aip"
+            task-user: "zhangzhaojin40458"
+            task-run-id: "0"
+            task-id: "0"
+            task-name: "for-test-name"
+            task-uuid: ""
+            taskd: taskd
+            pod-kind: master
+            type: pytorchjob
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: aip.sangfor.com/pool
+                        operator: In
+                        values:
+                          - a800-nvlink-100g
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            - |
+              sleep infinity
+            env:
+            - name: TRAINING_CONDA
+              value:  ""
+            image: registry.ai.sangfor.com/ai-sangfor/code-studio:torch-2.1-cu121-v1.0.0
+            imagePullPolicy: IfNotPresent
+            name: pytorch
+            ports:
+            - containerPort: 22
+              name: ssh
+              protocol: TCP
+            resources:
+              requests:
+                cpu: 1
+                memory: 1024Mi
+              limits:
+                cpu: 1
+                memory: 1024Mi
+            volumeMounts:
+            - mountPath: /mnt/project/aip
+              name: hostpath-c0f34dfe-d45e-4ed8-a212-315392b50e69
+            - mountPath: /etc/localtime
+              name: tz-config
+            - mountPath: /dev/shm
+              name: dshm
+            workingDir: /home/jovyan/
+          restartPolicy: Never
+          schedulerName: gpu-scheduler-plugins
+          volumes:
+          - name: hostpath-c0f34dfe-d45e-4ed8-a212-315392b50e69
+            hostPath:
+              path: /mnt/project/aip
+              type: DirectoryOrCreate
+          - hostPath:
+              path: /usr/share/zoneinfo/Asia/Shanghai
+            name: tz-config
+          - emptyDir:
+              medium: Memory
+            name: dshm
+    Worker:
+      replicas: 2
+      restartPolicy: Never
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+          labels:
+            project-id: "aip"
+            rtx-user: "zhangzhaojin40458"
+            run-id: "0"
+            task-project: "aip"
+            task-user: "zhangzhaojin40458"
+            task-run-id: "0"
+            task-id: "0"
+            task-name: "for-test-name"
+            task-uuid: ""
+            taskd: taskd
+            pod-kind: worker
+            type: pytorchjob
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: aip.sangfor.com/pool
+                        operator: In
+                        values:
+                          - a800-nvlink-100g
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            - |
+              export MASTER_ADDR=`cat /mnt/shared/master-ready`
+              sleep infinity
+            env:
+            - name: TRAINING_CONDA
+              value: ""
+            name: pytorch
+            image: registry.ai.sangfor.com/ai-sangfor/code-studio:torch-2.1-cu121-v1.0.0
+            imagePullPolicy: IfNotPresent
+            ports:
+            - containerPort: 22
+              name: ssh
+              protocol: TCP
+            resources:
+              requests:
+                cpu: 1
+                memory: 1024Mi
+              limits:
+                cpu: 1
+                memory: 1024Mi
+            volumeMounts:
+            - mountPath: /mnt/project/aip
+              name: hostpath-c0f34dfe-d45e-4ed8-a212-315392b50e69
+            - mountPath: /etc/localtime
+              name: tz-config
+            - mountPath: /dev/shm
+              name: dshm
+            workingDir: /home/jovyan/
+          restartPolicy: Never
+          schedulerName: gpu-scheduler-plugins
+          volumes:
+          - name: hostpath-c0f34dfe-d45e-4ed8-a212-315392b50e69
+            hostPath:
+              path: /mnt/project/aip
+              type: DirectoryOrCreate
+          - hostPath:
+              path: /usr/share/zoneinfo/Asia/Shanghai
+            name: tz-config
+          - emptyDir:
+              medium: Memory
+            name: dshm
+  runPolicy:
+    backoffLimit: 0
+
+

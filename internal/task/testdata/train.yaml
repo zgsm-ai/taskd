@@ -1,0 +1,251 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  namespace: test
+  name: command-runner
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  namespace: test
+  name: pod-commander
+rules:
+- apiGroups: [""]
+  resources: ["pods", "pods/exec"]
+  verbs: ["get", "list", "create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  namespace: test
+  name: pod-commander-binding
+subjects:
+- kind: ServiceAccount
+  namespace: test
+  name: command-runner
+roleRef:
+  kind: ClusterRole
+  name: pod-commander
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: shared-pv
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  hostPath:
+    path: /mnt/data/shared
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shared-pvc
+  namespace: test
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: command-script
+  namespace: test
+data:
+  run-commands.sh: |
+    #!/bin/sh
+
+    namespace=test
+    train_name=rdma
+    worker_num=2
+
+    echo "params(namespace) = $namespace"
+    echo "params(train_name) = $train_name"
+    echo "params(worker_num) = $worker_num"
+
+    # Function to get master IP
+    get_master_ip() {
+        if [ -f /mnt/shared/master-ready ]; then
+            masterip=$(cat /mnt/shared/master-ready)
+        else
+            masterip=""
+        fi
+    }
+
+    # Loop until masterip is not empty
+    while true; do
+        get_master_ip
+        if [ -n "$masterip" ]; then
+            break
+        fi
+        echo "Waiting for master IP..."
+        sleep 5
+    done
+
+    echo "get master ip finished!!! ip: $masterip"
+
+    # Function to update /etc/hosts in the pod
+    update_hosts() {
+        pod=$1
+        while true; do
+            kubectl exec "$pod" -n "$namespace" -c init-pytorch -- /bin/sh -c "echo '$masterip  $train_name-master-0' >> /etc/hosts"
+            if [ $? -eq 0 ]; then
+                break
+            fi
+            echo "Failed to update /etc/hosts for pod $pod. Retrying..."
+            sleep 5
+        done
+    }
+
+    # Get the list of pods and update /etc/hosts
+    i=0
+    while [ $i -lt $worker_num ]; do
+        update_hosts "$train_name-worker-$i" &
+        i=$((i + 1))
+    done
+
+    # Wait for all background jobs to finish
+    wait
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: monitor-pod
+  namespace: test
+  annotations:
+    sidecar.istio.io/inject: "false"
+spec:
+  containers:
+  - command: ["/bin/sh", "-c", "/mnt/scripts/run-commands.sh"]
+    image: docker.sangfor.com/cicd_2740/busybox
+    name: pytorch
+    volumeMounts:
+    - mountPath: /mnt/shared
+      name: shared-volume
+    - mountPath: /mnt/scripts
+      name: script-volume
+  serviceAccountName: command-ruygfhjkfghhdgkfnner
+  restartPolicy: Never
+  volumes:
+  - name: shared-volume
+    persistentVolumeClaim:
+      claimName: shared-pvc
+  - name: script-volume
+    configMap:
+      name: command-script
+      defaultMode: 0777
+---
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  name: "rdma"
+  namespace: "test"
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        metadata:
+          annotations:
+            sidecar.istio.io/inject: "false"
+            k8s.v1.cni.cncf.io/networks: default/macvlan-cx5-bond-conf
+          labels:
+            pod-kind: master
+            type: pytorchjob
+        spec:
+          initContainers:
+          - name: init-c
+            image: busybox
+            command:
+            - /bin/sh
+            - -c
+            - |
+              echo `ip addr show net1 | grep 'inet ' | awk '{print $2}' | cut -d/ -f1` >> /mnt/shared/master-ready
+            volumeMounts:
+            - mountPath: /mnt/shared
+              name: shared-volume
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            - |
+              sleep infinity
+            securityContext:
+              capabilities:
+                add: [ "IPC_LOCK" ]
+            image: docker.sangfor.com/cicd_2740/codestudio:torch2.0-cu117-transformers_xdr
+            imagePullPolicy: IfNotPresent
+            name: pytorch
+            resources:
+              requests:
+                rdma/hca_shared_devices: 1
+              limits:
+                rdma/hca_shared_devices: 1
+            volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /mnt/shared
+              name: shared-volume
+          restartPolicy: Never
+          schedulerName: gpu-scheduler-plugins
+          volumes:
+          - emptyDir:
+              medium: Memory
+            name: dshm
+          - name: shared-volume
+            persistentVolumeClaim:
+              claimName: shared-pvc
+    Worker:
+      replicas: 2
+      restartPolicy: Never
+      template:
+        metadata:
+          # 访问 ResourcesType 类型的字段
+          annotations:
+            sidecar.istio.io/inject: "false"
+            k8s.v1.cni.cncf.io/networks: default/macvlan-cx5-bond-conf
+          labels:
+            pod-kind: worker
+            type: pytorchjob
+        spec:
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            - |
+              export MASTER_ADDR=`cat /mnt/shared/master-ready`
+              sleep infinity
+            securityContext:
+              capabilities:
+                add: [ "IPC_LOCK" ]
+            image: docker.sangfor.com/cicd_2740/codestudio:torch2.0-cu117-transformers_xdr
+            name: pytorch
+            imagePullPolicy: IfNotPresent
+            resources:
+              requests:
+                rdma/hca_shared_devices: 1
+              limits:
+                rdma/hca_shared_devices: 1
+            volumeMounts:
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /mnt/shared
+              name: shared-volume
+          restartPolicy: Never
+          schedulerName: gpu-scheduler-plugins
+          volumes:
+          - emptyDir:
+              medium: Memory
+            name: dshm
+          - name: shared-volume
+            persistentVolumeClaim:
+              claimName: shared-pvc
+  runPolicy:
+    backoffLimit: 0

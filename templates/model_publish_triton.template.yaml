@@ -1,0 +1,137 @@
+# 参数：{{._extra.project}}-{{._extra.name}}[由tenant-model构成] 
+# {{._extra.memory}} {{._extra.cpu_num}} {{._extra.gpu_num}} {{._extra.device}} {{._extra.shm_size}}[默认64M] 
+# {{._extra.replicas}} {{._extra.model_path}} {{._extra.model_server}} {{._extra.device}} {{._extra.memory_r}} {{._extra.cpu_num_r}} {{._extra.gpu_num_r}}
+# Triton部署，需要将用户上传的模型目录结构变成Triton可识别的目录结构
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-deploy-pv-{{._extra.timestamp}}
+  namespace: seldon-model-dev  # 固定的命名空间
+  labels:
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Delete
+  nfs:
+    path: {{._extra.model_path}}      # /xxx/project/name/version
+    server: {{._extra.model_server}}
+  mountOptions:
+    - "nolock"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-deploy-pvc-{{._extra.timestamp}}
+  namespace: seldon-model-dev
+  labels:
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: {{._extra.project}}-{{._extra.name}}-deploy-pv-{{._extra.timestamp}}
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}
+  namespace: seldon-model-dev
+  labels:
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  gateways:
+  - istio-system/seldon-gateway
+  hosts:
+  - '*'
+  http:
+  - match:
+    - uri:
+        prefix: /seldon/seldon/{{._extra.project}}-{{._extra.name}}/
+    rewrite:
+      uri: /
+    route:
+    - destination:
+        host: {{._extra.project}}-{{._extra.name}}-default.seldon.svc.cluster.local
+        port:
+          number: 8000
+---
+apiVersion: machinelearning.seldon.io/v1
+kind: SeldonDeployment
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}
+  namespace: seldon-model-dev
+  labels:
+    task-project: "{{._extra.projectName}}"
+    task-user: "{{._extra.ownerName}}"
+    task-run-id: "{{._instance.ID}}"
+    task-id: "{{._task.ID}}"
+    task-name: "{{._task.Name}}"
+    task-uuid: "{{._task.UUID}}"
+    taskd: taskd
+spec:
+  annotations:
+    seldon.io/engine-seldon-log-messages-externally: "true"
+  name: {{._extra.project}}-{{._extra.name}}
+  predictors:
+    - componentSpecs:
+        - spec:
+            containers:
+              - name: {{._extra.project}}-{{._extra.name}}
+                volumeMounts:
+                  - name: {{._extra.project}}-{{._extra.name}}-deploy-shm-size
+                    mountPath: /dev/shm
+                command: ["/bin/bash", "-c"]
+                args:
+                - |
+                  # 模型运行时构建符合triton部署的目录结构
+                  mkdir -p /tmp/models/{{._extra.project}}-{{._extra.name}}/1
+                  ln -sf /mnt/models/model_files/config.pbtxt /tmp/models/{{._extra.project}}-{{._extra.name}}/
+                  ln -sf /mnt/models/model_files/* /tmp/models/{{._extra.project}}-{{._extra.name}}/1/
+                  rm -rf /tmp/models/{{._extra.project}}-{{._extra.name}}/1/config.pbtxt
+                   echo "部署模型的triton目录结构" >&1
+                  ls -R /tmp/models/{{._extra.project}}-{{._extra.name}}
+                  /opt/tritonserver/bin/tritonserver --grpc-port=9500 --http-port=9000 --model-repository=/tmp/models --strict-model-config=false
+                  if [ $? != 0 ]; then
+                    echo "ERROR: 模型部署失败，请重新部署" >&1
+                    exit 1
+                  fi
+                env:
+                - name: pod_name
+                  value: {{._extra.project}}-{{._extra.name}}
+                resources:
+                  requests:
+                    memory: {{._extra.memory_r}}Gi      # 一般设置为limits的一半，用户输入的值为limits
+                    cpu: {{._extra.cpu_num_r}}
+                    nvidia.com/gpu: {{._extra.gpu_num_r}}
+                  limits:
+                    memory: {{._extra.memory}}Gi
+                    cpu: {{._extra.cpu_num}}
+                    nvidia.com/gpu: {{._extra.gpu_num}}
+            volumes:
+              - name: {{._extra.project}}-{{._extra.name}}-provision-location
+                persistentVolumeClaim:
+                  claimName: {{._extra.project}}-{{._extra.name}}-deploy-pvc-{{._extra.timestamp}}
+              - name: {{._extra.project}}-{{._extra.name}}-deploy-shm-size
+                emptyDir:
+                  medium: Memory
+                  sizeLimit: {{._extra.shm_size}}Mi
+            initContainers:
+              - name: {{._extra.project}}-{{._extra.name}}-model-initializer
+                image: ubuntu:20.04
+                imagePullPolicy: IfNotPresent
+      graph:
+        implementation: TRITON_SERVER
+        modelUri: '/'
+        logger:
+          mode: all
+        name: {{._extra.project}}-{{._extra.name}}
+        type: MODEL
+      name: default
+      replicas: {{._extra.replicas}}
+  protocol: v2
+

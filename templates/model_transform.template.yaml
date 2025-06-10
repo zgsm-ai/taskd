@@ -1,0 +1,93 @@
+# 参数：{{._extra.project}} {{._extra.name}} {{._extra.model_server}} {{._extra.model_base_path}} {{._extra.model_device}} 
+# {{._extra.gpu_num}} {{._extra.timestamp}} {{._extra.trans_cmd}} {{._extra.model_version}} {{._extra.container_image}}
+# docker.sangfor.com/cicd_2740/jmc/tritonserver:23.04-py3
+# 这里挂载模型基路径，转换过程涉及原模型路径和转换完成后保存的模型路径
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-trans-pv-{{._extra.timestamp}}
+  namespace: model-job-ns  # 提前创建一个专属的命名空间
+  labels:
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Delete
+  nfs:
+    path: {{._extra.model_base_path}}   # /xxx/project/name/          
+    server: {{._extra.model_server}}        
+  mountOptions:
+    - "nolock"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-trans-pvc-{{._extra.timestamp}}
+  namespace: model-job-ns
+  labels:
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi
+  volumeName: {{._extra.project}}-{{._extra.name}}-trans-pv-{{._extra.timestamp}}
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{._extra.project}}-{{._extra.name}}-trans-job-{{._extra.timestamp}}
+  namespace: model-job-ns
+  labels: 
+    task-project: "{{._extra.projectName}}"
+    task-user: "{{._extra.ownerName}}"
+    task-run-id: "{{._instance.ID}}"
+    task-id: "{{._task.ID}}"
+    task-name: "{{._task.Name}}"
+    task-uuid: "{{._task.UUID}}"
+    taskd: taskd
+    pod_name: {{._extra.project}}-{{._extra.name}}-trans-job-{{._extra.timestamp}}
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  nodeSelector:
+    nodeId: {{._extra.node_id}}
+  restartPolicy: Never
+  volumes:
+  - name: model-repo
+    persistentVolumeClaim:
+      claimName: {{._extra.project}}-{{._extra.name}}-trans-pvc-{{._extra.timestamp}}
+  containers:
+  - name: {{._extra.project}}-{{._extra.name}}-trans-job-{{._extra.timestamp}}
+    resources:
+      requests:
+        nvidia.com/gpu: {{._extra.gpu_num}}
+      limits:
+        nvidia.com/gpu: {{._extra.gpu_num}}  # 需要gpu的个数，理论上而言 1 即可满足要求
+    image: {{._extra.container_image}}
+    command: ["/bin/sh", "-c"]
+    args: 
+    - |
+      # 创建新模型路径
+      mkdir -p /home/model-repo/{{._extra.new_commit_id}}/model_files
+      # 复制原模型的config.pbtxt到新目录
+      cp /home/model-repo/{{._extra.old_commit_id}}/model_files/config.pbtxt /home/model-repo/{{._extra.new_commit_id}}/model_files
+      
+      # 模型格式转换命令
+      /usr/src/tensorrt/bin/trtexec --onnx=/home/model-repo/{{._extra.old_commit_id}}/model_files/model.onnx  --saveEngine=/home/model-repo/{{._extra.new_commit_id}}/model_files/model.plan {{._extra.trans_cmd}}
+
+      if [ $? != 0 ]; then
+        echo "ERROR: 模型格式转换失败，请重新转换" >&1
+        rm -rf /home/model-repo/{{._extra.new_commit_id}}
+        exit 1
+      fi
+      echo "INFO: 模型格式转换成功" >&1
+    env:
+    - name: pod_name
+      value: {{._extra.project}}-{{._extra.name}}-trans-job-{{._extra.timestamp}}
+    volumeMounts:
+    - name: model-repo
+      mountPath: /home/model-repo
+

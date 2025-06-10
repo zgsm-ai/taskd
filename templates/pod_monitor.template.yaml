@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: {{._extra.podName}}-monitor
+  namespace: {{._extra.namespace}}
+  labels:
+    task-project: "{{._extra.projectName}}"
+    task-user: "{{._extra.ownerName}}"
+    task-run-id: "{{._instance.ID}}"
+    task-id: "{{._task.ID}}"
+    task-name: "{{._task.Name}}"
+    task-uuid: "{{._task.UUID}}"
+    taskd: taskd
+    randomVersion: {{._extra.randomVersion}}
+spec:
+  containers:
+    - name: monitor-container
+      image: registry.ai.sangfor.com/ai-sangfor/task-monitor:v1.79
+      command: ["python"]
+      args: ["monitor_pod.py", "--taskId={{._extra.taskId}}", "--podName={{._extra.podName}}", "--namespace={{._extra.namespace}}", "--callback_url={{._extra.callback_url}}", "--k8s_api_server_url={{._extra.k8s_api_server_url}}", "--k8s_api_server_token={{._extra.k8s_api_server_token}}", "--error_detect={{._extra.error_detect}}", "--error_retry_interval={{._extra.error_retry_interval}}", "--error_retry_max={{._extra.error_retry_max}}"]   
+  restartPolicy: OnFailure
+

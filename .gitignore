@@ -1,0 +1,10 @@
+*.exe
+*.log
+*.csv
+*.db
+.vscode
+.dependencygraph
+env.yaml
+test/
+.idea
+.env
