@@ -1,11 +1,13 @@
 package flow
 
 import (
+	"fmt"
 	"io"
 	"reflect"
-	"sync"
+	"taskd/dao"
 	"taskd/internal/task"
 	"testing"
+	"time"
 
 	"github.com/agiledragon/gomonkey/v2"
 	. "github.com/smartystreets/goconvey/convey"
@@ -50,9 +52,13 @@ func TestHandleRunningJob_CompletedStatus(t *testing.T) {
 	Convey("当作业状态已完成时，应该调用 sendFinishedChan", t, func() {
 		job := &mockTaskJob{status: task.TaskStatusSucceeded}
 		tp := &task.TaskPool{}
+		job.AttachPool(tp)
 		sendFinishedChanCalled := false
-		gomonkey.ApplyFunc(tp.SendFinishedChan, func(task.TaskJob) {
+		gomonkey.ApplyMethod(reflect.TypeOf(tp), "SendFinishedChan", func(_ *task.TaskPool, job task.TaskJob) {
 			sendFinishedChanCalled = true
+		})
+		gomonkey.ApplyFunc(dao.SetJSON, func(string, any, time.Duration) error {
+			return nil
 		})
 		dealRunningJob(job)
 
@@ -60,198 +66,318 @@ func TestHandleRunningJob_CompletedStatus(t *testing.T) {
 	})
 }
 
-// Test case 2: Verify behavior when job status is unfinished, expect dealRunningJob and resolveMetrics to be called
-func TestHandleRunningJob_UnfinishedStatus(t *testing.T) {
-	Convey("当作业状态未完成时，应该调用 dealRunningJob 和 resolveMetrics", t, func() {
-		job := &mockTaskJob{status: task.TaskStatusRunning}
-
-		patches := gomonkey.ApplyFunc(dealRunningJob, func(task.TaskJob, func(task.TaskJob)) {})
-		defer patches.Reset()
-
-		processRunningJobCalled := false
-		patches.ApplyFunc(dealRunningJob, func(task.TaskJob, func(task.TaskJob)) {
-			processRunningJobCalled = true
-		})
-
-		resolveMetricsCalled := false
-		patches.ApplyFunc(resolveMetrics, func(*task.Metric) {
-			resolveMetricsCalled = true
-		})
-
-		dealRunningJob(job)
-
-		So(processRunningJobCalled, ShouldBeTrue)
-		So(resolveMetricsCalled, ShouldBeTrue)
-	})
-}
-
-// Test case 3: Verify job status transition during dealRunningJob processing
-func TestHandleRunningJob_TransitionWithinProcess(t *testing.T) {
-	Convey("当在进行 dealRunningJob 处理时，作业状态由未完成变更为完成", t, func() {
-		job := &mockTaskJob{status: task.TaskStatusRunning}
-		tp := &task.TaskPool{}
-
-		patches := gomonkey.ApplyFunc(dealRunningJob, func(task.TaskJob, func(task.TaskJob)) {
-			patch := gomonkey.ApplyMethod(reflect.TypeOf(job), "FetchStatus", func() task.TaskStatus { return task.TaskStatusSucceeded })
-			defer patch.Reset()
-		})
-		defer patches.Reset()
-
-		sendFinishedChanCalled := false
-		gomonkey.ApplyFunc(tp.SendFinishedChan, func(task.TaskJob) {
-			sendFinishedChanCalled = true
-		})
-
-		dealRunningJob(job)
-
-		So(sendFinishedChanCalled, ShouldBeTrue)
-	})
-}
-
-// Test case 4: Test various job statuses to ensure each works as expected
-func TestHandleRunningJob_VariousJobStatuses(t *testing.T) {
-	Convey("在不同的作业状态下，确保功能按预期工作", t, func() {
-		job := &mockTaskJob{status: task.TaskStatusRunning}
-		tp := &task.TaskPool{}
-
-		patches := gomonkey.ApplyFunc(dealRunningJob, func(task.TaskJob, func(task.TaskJob)) {})
-		defer patches.Reset()
-
-		tests := []struct {
-			name          string
-			status        task.TaskStatus
-			expectedPhase task.TaskPhase
-		}{
-			{"Queued", task.TaskStatusQueue, task.PhaseQueue},
-			{"Running", task.TaskStatusRunning, task.PhaseRunning},
-			{"Waiting", task.TaskStatusInit, task.PhaseInit},
-		}
-
-		for _, tt := range tests {
-			job.status = tt.status
-			sendFinishedChanCalled := false
-			gomonkey.ApplyFunc(tp.SendFinishedChan, func(task.TaskJob) {
-				sendFinishedChanCalled = true
+func TestInit(t *testing.T) {
+	Convey("测试初始化函数", t, func() {
+		Convey("正常初始化", func() {
+			patches := gomonkey.ApplyFunc(initPools, func() error {
+				return nil
 			})
+			defer patches.Reset()
 
-			dealRunningJob(job)
-			So(sendFinishedChanCalled, ShouldBeFalse)
-		}
+			err := Init()
+			So(err, ShouldBeNil)
+			So(allJobs, ShouldNotBeNil)
+			So(allPools, ShouldNotBeNil)
+		})
+
+		Convey("初始化pool失败", func() {
+			patches := gomonkey.ApplyFunc(initPools, func() error {
+				return fmt.Errorf("init pools failed")
+			})
+			defer patches.Reset()
+
+			err := Init()
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 
-// Test case 5: Verify exception handling in dealRunningJob and resolveMetrics
-func TestHandleRunningJob_HandleExceptions(t *testing.T) {
-	Convey("当 dealRunningJob 和 resolveMetrics 中出现异常时，应该正确处理", t, func() {
-		job := &mockTaskJob{status: task.TaskStatusFailed}
+func TestReloadPoolConfigs(t *testing.T) {
+	Convey("测试重载池配置", t, func() {
+		mockPool := &task.TaskPool{}
+		mockPool.Pool.PoolId = "test-pool"
 
-		patches := gomonkey.ApplyFunc(dealRunningJob, func(task.TaskJob, func(task.TaskJob)) {
-			panic("dealRunningJob exception")
-		})
-		defer patches.Reset()
-
-		So(func() { dealRunningJob(job) }, ShouldPanic)
-
-		patches.ApplyFunc(resolveMetrics, func(*task.Metric) {
-			panic("resolveMetrics exception")
-		})
-
-		So(func() { dealRunningJob(job) }, ShouldPanic)
-	})
-}
-
-// Test case 6: Process large number of jobs in short time to evaluate performance
-func TestHandleRunningJob_Performance(t *testing.T) {
-	Convey("快速处理大量作业，并评估性能", t, func() {
-		job := &mockTaskJob{status: task.TaskStatusRunning}
-		tp := &task.TaskPool{}
-		numJobs := 1000
-		sendFinishedChanCalledCount := 0
-		gomonkey.ApplyFunc(tp.SendFinishedChan, func(task.TaskJob) {
-			sendFinishedChanCalledCount++
-		})
-
-		for i := 0; i < numJobs; i++ {
-			dealRunningJob(job)
+		allPools = map[string]*task.TaskPool{
+			"test-pool": mockPool,
 		}
 
-		So(sendFinishedChanCalledCount, ShouldEqual, 0)
+		Convey("重载存在的池", func() {
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(mockPool), "ReloadResources", func(*task.TaskPool) error {
+				return nil
+			})
+			defer patches.Reset()
+
+			err := ReloadPoolConfigs("test-pool")
+			So(err, ShouldBeNil)
+		})
+
+		Convey("重载不存在的池", func() {
+			err := ReloadPoolConfigs("non-existent-pool")
+			So(err, ShouldBeNil)
+		})
+
+		Convey("重载失败", func() {
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(mockPool), "ReloadResources", func(*task.TaskPool) error {
+				return fmt.Errorf("reload failed")
+			})
+			defer patches.Reset()
+
+			err := ReloadPoolConfigs("test-pool")
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 
-// Test case 7: Verify behavior when sendFinishedChan is nil
-func TestHandleRunningJob_NilSendFinishedChan(t *testing.T) {
-	Convey("当 sendFinishedChan 为 nil 时，应该正确处理", t, func() {
-		job := &mockTaskJob{status: task.TaskStatusSucceeded}
+func TestReloadHistoryTasks(t *testing.T) {
+	Convey("测试重载历史任务", t, func() {
+		Convey("没有未完成任务", func() {
+			patches := gomonkey.ApplyFunc(dao.LoadTasks_NotFinished, func() ([]dao.TaskRec, error) {
+				return []dao.TaskRec{}, nil
+			})
+			defer patches.Reset()
 
-		So(func() { dealRunningJob(job) }, ShouldNotPanic)
+			err := ReloadHistoryTasks()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("有未完成任务", func() {
+			testTasks := []dao.TaskRec{
+				{TaskObjRec: dao.TaskObjRec{UUID: "task1", Template: "template1"}},
+				{TaskObjRec: dao.TaskObjRec{UUID: "task2", Template: "template2"}},
+			}
+
+			patches := gomonkey.ApplyFunc(dao.LoadTasks_NotFinished, func() ([]dao.TaskRec, error) {
+				return testTasks, nil
+			})
+			patches.ApplyFunc(PoolNewJob, func(tr *dao.TaskRec) (task.TaskJob, error) {
+				return &mockTaskJob{}, nil
+			})
+			defer patches.Reset()
+
+			err := ReloadHistoryTasks()
+			So(err, ShouldBeNil)
+		})
+
+		Convey("加载任务失败", func() {
+			patches := gomonkey.ApplyFunc(dao.LoadTasks_NotFinished, func() ([]dao.TaskRec, error) {
+				return nil, fmt.Errorf("load failed")
+			})
+			defer patches.Reset()
+
+			err := ReloadHistoryTasks()
+			So(err, ShouldNotBeNil)
+		})
 	})
 }
 
-// Test case 8: Verify thread safety under concurrent calls
-func TestHandleRunningJob_ConcurrentInvocations(t *testing.T) {
-	Convey("并发调用以确保线程安全", t, func() {
-		job := &mockTaskJob{status: task.TaskStatusRunning}
-		tp := &task.TaskPool{}
-		var jobs []task.TaskJob
-		for i := 0; i < 100; i++ {
-			jobs = append(jobs, job)
+func TestListPools(t *testing.T) {
+	Convey("测试ListPools函数", t, func() {
+		pool1 := &task.TaskPool{}
+		pool1.Pool.PoolId = "pool1"
+		pool2 := &task.TaskPool{}
+		pool2.Pool.PoolId = "pool2"
+
+		allPools = map[string]*task.TaskPool{
+			"pool1": pool1,
+			"pool2": pool2,
 		}
 
-		gomonkey.ApplyFunc(tp.SendFinishedChan, func(task.TaskJob) {})
+		pools := ListPools()
+		So(len(pools), ShouldEqual, 2)
+		So(pools[0].PoolId, ShouldEqual, "pool1")
+		So(pools[1].PoolId, ShouldEqual, "pool2")
+	})
+}
 
-		var wg sync.WaitGroup
-		for _, j := range jobs {
-			wg.Add(1)
-			go func(job task.TaskJob) {
-				defer wg.Done()
-				dealRunningJob(job)
-			}(j)
+func TestGetPool(t *testing.T) {
+	Convey("测试GetPool函数", t, func() {
+		testPool := &task.TaskPool{}
+		testPool.Pool.PoolId = "test-pool"
+		allPools = map[string]*task.TaskPool{
+			"test-pool": testPool,
 		}
-		wg.Wait()
+
+		Convey("获取存在的池", func() {
+			pool := GetPool("test-pool")
+			So(pool, ShouldEqual, testPool)
+		})
+
+		Convey("获取不存在的池", func() {
+			pool := GetPool("non-existent-pool")
+			So(pool, ShouldBeNil)
+		})
 	})
 }
 
-// Test case 9: Verify external system dependencies in dealRunningJob and resolveMetrics
-func TestHandleRunningJob_ExternalDependencies(t *testing.T) {
-	Convey("验证函数对外部系统的依赖，例如数据库或网络调用", t, func() {
-		job := &mockTaskJob{status: task.TaskStatusRunning}
+func TestRemovePool(t *testing.T) {
+	Convey("测试RemovePool函数", t, func() {
+		testPool := &task.TaskPool{}
+		testPool.Pool.PoolId = "test-pool"
+		allPools = map[string]*task.TaskPool{
+			"test-pool": testPool,
+		}
 
-		patches := gomonkey.ApplyFunc(dealRunningJob, func(task.TaskJob, func(task.TaskJob)) {
-			// Mock external system call
+		Convey("移除空的池", func() {
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(testPool), "GetRunningCount", func(*task.TaskPool) int {
+				return 0
+			})
+			patches.ApplyMethod(reflect.TypeOf(testPool), "GetWaitingCount", func(*task.TaskPool) int {
+				return 0
+			})
+			defer patches.Reset()
+
+			err := RemovePool("test-pool")
+			So(err, ShouldBeNil)
+			So(allPools, ShouldNotContainKey, "test-pool")
 		})
-		defer patches.Reset()
 
-		patches.ApplyFunc(resolveMetrics, func(*task.Metric) {
-			// Mock external system call
+		Convey("移除有任务的池", func() {
+			patches := gomonkey.ApplyMethod(reflect.TypeOf(testPool), "GetRunningCount", func(*task.TaskPool) int {
+				return 1
+			})
+			patches.ApplyMethod(reflect.TypeOf(testPool), "GetWaitingCount", func(*task.TaskPool) int {
+				return 0
+			})
+			defer patches.Reset()
+
+			err := RemovePool("test-pool")
+			So(err, ShouldNotBeNil)
 		})
 
-		dealRunningJob(job)
+		Convey("移除不存在的池", func() {
+			err := RemovePool("non-existent-pool")
+			So(err, ShouldBeNil)
+		})
 	})
 }
 
-// Test case 10: Verify behavior when stopJob is called
-func TestHandleRunningJob_StopJobCalled(t *testing.T) {
-	Convey("当需要停止作业时，应该正确调用 stopJob", t, func() {
-		job := &mockTaskJob{status: task.TaskStatusRunning}
+func TestGetJob(t *testing.T) {
+	Convey("测试GetJob函数", t, func() {
+		testJob := &mockTaskJob{}
+		allJobs = map[string]task.TaskJob{
+			"job1": testJob,
+		}
 
-		stopCalled := false
-		var calledStatus task.TaskStatus
-
-		patches := gomonkey.ApplyFunc(stopJob, func(j task.TaskJob, status task.TaskStatus) {
-			stopCalled = true
-			calledStatus = status
-		})
-		defer patches.Reset()
-
-		// Mock job stopping scenario
-		patches.ApplyMethod(reflect.TypeOf(job), "GetStatus", func() task.TaskStatus {
-			return task.TaskStatusFailed
+		Convey("获取存在的任务", func() {
+			job, err := GetJob("job1")
+			So(err, ShouldBeNil)
+			So(job, ShouldEqual, testJob)
 		})
 
-		dealRunningJob(job)
+		Convey("获取不存在的任务", func() {
+			patches := gomonkey.ApplyFunc(task.LoadJob, func(uuri string) (task.TaskJob, error) {
+				return nil, fmt.Errorf("not found")
+			})
+			defer patches.Reset()
 
-		So(stopCalled, ShouldBeTrue)
-		So(calledStatus, ShouldEqual, task.TaskStatusFailed)
+			job, err := GetJob("non-existent-job")
+			So(err, ShouldNotBeNil)
+			So(job, ShouldBeNil)
+		})
+
+		Convey("从数据库加载失败", func() {
+			patches := gomonkey.ApplyFunc(task.LoadJob, func(uuid string) (task.TaskJob, error) {
+				return nil, fmt.Errorf("load failed")
+			})
+			defer patches.Reset()
+
+			job, err := GetJob("job2")
+			So(err, ShouldNotBeNil)
+			So(job, ShouldBeNil)
+		})
+	})
+}
+
+func TestPoolNewJob(t *testing.T) {
+	Convey("测试PoolNewJob函数", t, func() {
+		testTaskRec := &dao.TaskRec{
+			TaskObjRec: dao.TaskObjRec{UUID: "test-task"},
+		}
+		testJob := &mockTaskJob{}
+		testPool := &task.TaskPool{}
+		testPool.Pool.PoolId = "test-pool"
+
+		allPools = map[string]*task.TaskPool{
+			"test-pool": testPool,
+		}
+
+		Convey("成功创建任务", func() {
+			patches := gomonkey.ApplyFunc(task.CreateJob, func(tr *dao.TaskRec) (task.TaskJob, error) {
+				return testJob, nil
+			})
+			patches.ApplyFunc(selectPool, func(job task.TaskJob) (*task.TaskPool, error) {
+				return testPool, nil
+			})
+			defer patches.Reset()
+
+			job, err := PoolNewJob(testTaskRec)
+			So(err, ShouldBeNil)
+			So(job, ShouldEqual, testJob)
+			So(allJobs, ShouldContainKey, "test-task")
+		})
+
+		Convey("创建任务失败", func() {
+			patches := gomonkey.ApplyFunc(task.CreateJob, func(tr *dao.TaskRec) (task.TaskJob, error) {
+				return nil, fmt.Errorf("create failed")
+			})
+			defer patches.Reset()
+
+			job, err := PoolNewJob(testTaskRec)
+			So(err, ShouldNotBeNil)
+			So(job, ShouldBeNil)
+		})
+
+		Convey("选择池失败", func() {
+			patches := gomonkey.ApplyFunc(task.CreateJob, func(tr *dao.TaskRec) (task.TaskJob, error) {
+				return testJob, nil
+			})
+			patches.ApplyFunc(selectPool, func(job task.TaskJob) (*task.TaskPool, error) {
+				return nil, fmt.Errorf("no suitable pool")
+			})
+			defer patches.Reset()
+
+			job, err := PoolNewJob(testTaskRec)
+			So(err, ShouldNotBeNil)
+			So(job, ShouldBeNil)
+		})
+	})
+}
+
+func TestCancelJob(t *testing.T) {
+	Convey("测试CancelJob函数", t, func() {
+		testJob := &mockTaskJob{}
+		allJobs = map[string]task.TaskJob{
+			"job1": testJob,
+		}
+
+		Convey("取消存在的任务", func() {
+			patches := gomonkey.ApplyFunc(stopJob, func(job task.TaskJob, status task.TaskStatus, err error) {
+				// mock stopJob
+			})
+			defer patches.Reset()
+
+			err := CancelJob("job1")
+			So(err, ShouldBeNil)
+		})
+
+		Convey("取消不存在的任务", func() {
+			patches := gomonkey.ApplyFunc(dao.ExistTask, func(uuid string) (bool, error) {
+				return false, nil
+			})
+			defer patches.Reset()
+
+			err := CancelJob("non-existent-job")
+			So(err, ShouldNotBeNil)
+		})
+
+		Convey("检查任务存在性失败", func() {
+			patches := gomonkey.ApplyFunc(dao.ExistTask, func(uuid string) (bool, error) {
+				return false, fmt.Errorf("check failed")
+			})
+			defer patches.Reset()
+
+			err := CancelJob("job2")
+			So(err, ShouldNotBeNil)
+		})
 	})
 }

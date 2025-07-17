@@ -12,6 +12,7 @@ import (
  */
 type TaskObjRec struct {
 	UUID      string `json:"uuid,omitempty"`       // Task UUID
+	Parent    string `json:"parent,omitempty"`     // The batch specified by this ID
 	Namespace string `json:"namespace,omitempty"`  // Namespace
 	Name      string `json:"name,omitempty"`       // Task name
 	Project   string `json:"project,omitempty"`    // Project name

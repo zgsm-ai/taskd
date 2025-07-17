@@ -136,11 +136,11 @@ metadata:
   labels:
     project-id: "aip"
     rtx-user: "zhangzhaojin40458"
-    run-id: "0"
+    run-id: "uuid0"
     task-project: "aip"
     task-user: "zhangzhaojin40458"
-    task-run-id: "0"
-    task-id: "0"
+    task-run-id: "uuid0"
+    task-id: "uuid0"
     task-name: "for-test-name"
     task-uuid: ""
     taskd: taskd
@@ -159,11 +159,11 @@ spec:
           labels:
             project-id: "aip"
             rtx-user: "zhangzhaojin40458"
-            run-id: "0"
+            run-id: "uuid0"
             task-project: "aip"
             task-user: "zhangzhaojin40458"
-            task-run-id: "0"
-            task-id: "0"
+            task-run-id: "uuid0"
+            task-id: "uuid0"
             task-name: "for-test-name"
             task-uuid: ""
             taskd: taskd
@@ -255,11 +255,11 @@ spec:
           labels:
             project-id: "aip"
             rtx-user: "zhangzhaojin40458"
-            run-id: "0"
+            run-id: "uuid0"
             task-project: "aip"
             task-user: "zhangzhaojin40458"
-            task-run-id: "0"
-            task-id: "0"
+            task-run-id: "uuid0"
+            task-id: "uuid0"
             task-name: "for-test-name"
             task-uuid: ""
             taskd: taskd

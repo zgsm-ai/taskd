@@ -4,11 +4,11 @@ metadata:
   labels:
     project-id: "{{._extra.projectName}}"
     rtx-user: "{{._extra.ownerName}}"
-    run-id: "{{._instance.ID}}"
+    run-id: "{{._task.UUID}}"
     task-project: "{{._extra.projectName}}"
     task-user: "{{._extra.ownerName}}"
-    task-run-id: "{{._instance.ID}}"
-    task-id: "{{._task.ID}}"
+    task-run-id: "{{._task.UUID}}"
+    task-id: "{{._task.UUID}}"
     task-name: "{{._task.Name}}"
     task-uuid: "{{._task.UUID}}"
     taskd: taskd
@@ -24,11 +24,11 @@ spec:
           labels:
             project-id: "{{._extra.projectName}}"
             rtx-user: "{{._extra.ownerName}}"
-            run-id: "{{._instance.ID}}"
+            run-id: "{{._task.UUID}}"
             task-project: "{{._extra.projectName}}"
             task-user: "{{._extra.ownerName}}"
-            task-run-id: "{{._instance.ID}}"
-            task-id: "{{._task.ID}}"
+            task-run-id: "{{._task.UUID}}"
+            task-id: "{{._task.UUID}}"
             task-name: "{{._task.Name}}"
             task-uuid: "{{._task.UUID}}"
             taskd: taskd
@@ -44,7 +44,7 @@ spec:
                       - key: aip.sangfor.com/pool
                         operator: In
                         values:
-                          - {{yamlValue ._instance.Pool "a800-pcie"}}
+                          - {{yamlValue ._task.Pool "a800-pcie"}}
           containers:
           - command:
             - /bin/bash

@@ -1,0 +1,97 @@
+apiVersion: kubeflow.org/v1
+kind: PyTorchJob
+metadata:
+  labels:
+    project-id: "aip"
+    rtx-user: "zhangzhaojin40458"
+    run-id: "uuid0"
+    task-project: "aip"
+    task-user: "zhangzhaojin40458"
+    task-run-id: "uuid0"
+    task-id: "uuid0"
+    task-name: "for-test-name"
+    task-uuid: "uuid0"
+    taskd: taskd
+  name: "for-test-name"
+  namespace: "for-test-namespace"
+spec:
+  pytorchReplicaSpecs:
+    Master:
+      replicas: 1
+      restartPolicy: Never
+      template:
+        metadata:
+          labels:
+            project-id: "aip"
+            rtx-user: "zhangzhaojin40458"
+            run-id: "uuid0"
+            task-project: "aip"
+            task-user: "zhangzhaojin40458"
+            task-run-id: "uuid0"
+            task-id: "uuid0"
+            task-name: "for-test-name"
+            task-uuid: "uuid0"
+            taskd: taskd
+            type: pytorchjob
+          annotations:
+            sidecar.istio.io/inject: "false"
+        spec:
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                  - matchExpressions:
+                      - key: aip.sangfor.com/pool
+                        operator: In
+                        values:
+                          - h100-mem-2t
+          containers:
+          - command:
+            - /bin/bash
+            - -c
+            - echo $CONDA_DIR && source ${CONDA_DIR:-/opt/conda}/etc/profile.d/conda.sh && conda info --envs && conda activate /home/jovyan/work/zjz/env/zjz && sleep infinity
+            env:
+            - name: TRAINING_CONDA
+              value: "/home/jovyan/work/zjz/env/zjz"
+            name: pytorch
+            image: registry.ai.sangfor.com/ai-sangfor/code-studio:torch-2.1-cu121-v1.0.0
+            imagePullPolicy: IfNotPresent
+            resources:
+              requests:
+                cpu: 112
+                memory: 983040Mi
+                nvidia.com/gpu: 8
+              limits:
+                cpu: 112
+                memory: 983040Mi
+                nvidia.com/gpu: 8
+            volumeMounts:
+            - mountPath: /home/jovyan
+              name: pvc-8dd98f6a-c30f-4d59-a017-23e60309b06f
+            - mountPath: /mnt/project/aip
+              name: hostpath-fd621f42-d0d0-4fe6-98e1-bf6b41252e33
+            - mountPath: /etc/localtime
+              name: tz-config
+            - mountPath: /dev/shm
+              name: dshm
+            workingDir: /home/jovyan/
+          restartPolicy: Never
+          schedulerName: gpu-scheduler-plugins
+          volumes:
+          - name: pvc-8dd98f6a-c30f-4d59-a017-23e60309b06f
+            persistentVolumeClaim:
+              claimName: dfdfd
+          - name: hostpath-fd621f42-d0d0-4fe6-98e1-bf6b41252e33
+            hostPath:
+              path: /mnt/project/aip
+              type: DirectoryOrCreate
+          - hostPath:
+              path: /usr/share/zoneinfo/Asia/Shanghai
+            name: tz-config
+          - emptyDir:
+              medium: Memory
+            name: dshm
+  runPolicy:
+    backoffLimit: 0
+
+

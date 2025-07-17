@@ -148,30 +148,33 @@ func runHttpServer(c *utils.ServerConfig) {
 
 	// Register Swagger handler
 	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-	// Tasks
-	r.POST("/taskd/api/v1/tasks", controllers.TaskCommit)
-	r.GET("/taskd/api/v1/tasks", controllers.ListTasks)
-	r.GET("/taskd/api/v1/tasks/:uuid", controllers.TaskData)
-	r.GET("/taskd/api/v1/tasks/:uuid/status", controllers.TaskStatus)
-	r.GET("/taskd/api/v1/tasks/:uuid/logs", controllers.TaskLogs)
-	r.GET("/taskd/api/v1/tasks/:uuid/tags", controllers.TaskGetTags)
-	r.POST("/taskd/api/v1/tasks/:uuid/tags", controllers.TaskTags)
-	r.DELETE("/taskd/api/v1/tasks/:uuid", controllers.TaskStop)
 
-	// Task templates
-	r.POST("/taskd/api/v1/templates", controllers.AddTemplate)
-	r.PUT("/taskd/api/v1/templates/:name", controllers.UpdateTemplate)
-	r.GET("/taskd/api/v1/templates", controllers.ListTemplates)
-	r.GET("/taskd/api/v1/templates/:name", controllers.GetTemplate)
-	r.DELETE("/taskd/api/v1/templates/:name", controllers.DeleteTemplate)
+	apiv1 := r.Group("/taskd/api/v1")
+	{
+		// Tasks
+		apiv1.POST("/tasks", controllers.TaskCommit)
+		apiv1.GET("/tasks", controllers.ListTasks)
+		apiv1.GET("/tasks/:uuid", controllers.TaskData)
+		apiv1.GET("/tasks/:uuid/status", controllers.TaskStatus)
+		apiv1.GET("/tasks/:uuid/logs", controllers.TaskLogs)
+		apiv1.GET("/tasks/:uuid/tags", controllers.TaskGetTags)
+		apiv1.POST("/tasks/:uuid/tags", controllers.TaskTags)
+		apiv1.DELETE("/tasks/:uuid", controllers.TaskStop)
 
-	// Task pools
-	r.POST("/taskd/api/v1/pools", controllers.AddPool)
-	r.GET("/taskd/api/v1/pools", controllers.ListPools)
-	r.GET("/taskd/api/v1/pools/:name", controllers.GetPool)
-	r.PUT("/taskd/api/v1/pools/:name", controllers.UpdatePool)
-	r.DELETE("/taskd/api/v1/pools/:name", controllers.DeletePool)
+		// Task templates
+		apiv1.POST("/templates", controllers.AddTemplate)
+		apiv1.PUT("/templates/:name", controllers.UpdateTemplate)
+		apiv1.GET("/templates", controllers.ListTemplates)
+		apiv1.GET("/templates/:name", controllers.GetTemplate)
+		apiv1.DELETE("/templates/:name", controllers.DeleteTemplate)
 
+		// Task pools
+		apiv1.POST("/pools", controllers.AddPool)
+		apiv1.GET("/pools", controllers.ListPools)
+		apiv1.GET("/pools/:name", controllers.GetPool)
+		apiv1.PUT("/pools/:name", controllers.UpdatePool)
+		apiv1.DELETE("/pools/:name", controllers.DeletePool)
+	}
 	err := r.Run(c.ListenAddr)
 	if err != nil {
 		log.Fatal(err)

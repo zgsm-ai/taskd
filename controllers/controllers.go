@@ -21,7 +21,7 @@ type ResponseData struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 	Success bool   `json:"success"`
-	Data    any    `json:"data"`
+	Data    any    `json:"data,omitempty"`
 }
 
 /**
@@ -29,12 +29,7 @@ type ResponseData struct {
  */
 func respOK(c *gin.Context, data any) {
 	utils.Debugf("request: %+v, response: %+v", c.Request.RequestURI, data)
-	c.JSON(http.StatusOK, ResponseData{
-		Code:    "0",
-		Message: "OK",
-		Success: true,
-		Data:    data,
-	})
+	c.JSON(http.StatusOK, data)
 }
 
 /**
@@ -43,7 +38,7 @@ func respOK(c *gin.Context, data any) {
 func respError(c *gin.Context, code int, err error) {
 	utils.Errorf("request: %+v, error: %s", c.Request.RequestURI, err.Error())
 	if httpErr, ok := err.(*utils.HttpError); ok {
-		c.JSON(code, ResponseData{
+		c.JSON(httpErr.Code(), ResponseData{
 			Code:    strconv.Itoa(httpErr.Code()),
 			Message: httpErr.Error(),
 			Success: false,

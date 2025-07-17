@@ -13,6 +13,10 @@ data:
       port: ${{__env_profile.database.port}}
       password: ${{__env_profile.database.password}}
       user: ${{__env_profile.database.user}}
+    redis:
+      addr: ${{__env_profile.redis.addr}}
+      password: ${{__env_profile.redis.password}}
+      db: ${{__env_profile.redis.db}}
     timeout:
       phaseQueueDefault: 300
       phaseInitDefault: 300
