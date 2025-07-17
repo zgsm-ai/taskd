@@ -8,12 +8,12 @@ import (
 )
 
 func TestTaskInstance_Compile(t *testing.T) {
-	bs2, err := os.ReadFile("testdata/template_train_standalone.yaml")
+	bs2, err := os.ReadFile("./testdata/template_train_standalone.yaml")
 	if err != nil {
 		panic(err)
 	}
 
-	expectHcaYaml, err := os.ReadFile("./testdata/expect_hca_train.yaml")
+	expectHcaYaml, err := os.ReadFile("./testdata/expect_train_standalone.yaml")
 	if err != nil {
 		panic(err)
 	}
@@ -30,6 +30,7 @@ func TestTaskInstance_Compile(t *testing.T) {
 				TaskRec: dao.TaskRec{
 					TaskRuntimeRec: dao.TaskRuntimeRec{},
 					TaskObjRec: dao.TaskObjRec{
+						UUID:      "uuid0",
 						Namespace: "for-test-namespace",
 						Name:      "for-test-name",
 						Pool:      "h100-mem-2t",
@@ -56,6 +57,7 @@ func TestTaskInstance_Compile(t *testing.T) {
 			if strings.TrimSpace(got) != strings.TrimSpace(tt.want) {
 				t.Errorf("TaskInstance.Compile() = %v, want %v", got, tt.want)
 			}
+			os.Remove("out.yaml")
 		})
 	}
 }

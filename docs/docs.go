@@ -11,7 +11,7 @@ const docTemplate = `{
         "title": "{{.Title}}",
         "termsOfService": "http://www.sangfor.com.cn",
         "contact": {
-            "name": "张钊晋,郑柏春",
+            "name": "Zhaojin Zhang,Bochun Zheng",
             "url": "http://www.sangfor.com.cn"
         },
         "license": {
@@ -25,7 +25,7 @@ const docTemplate = `{
     "paths": {
         "/v1/pools": {
             "get": {
-                "description": "列举任务池信息，比如资源用量，运行任务概况",
+                "description": "List task pool information including resource usage and running task overview",
                 "consumes": [
                     "application/json"
                 ],
@@ -33,12 +33,12 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务池"
+                    "TaskPools"
                 ],
-                "summary": "列举任务池",
+                "summary": "List task pools",
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Queue information",
                         "schema": {
                             "type": "array",
                             "items": {
@@ -49,7 +49,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "添加一个任务池",
+                "description": "Add a task pool",
                 "consumes": [
                     "application/json"
                 ],
@@ -57,12 +57,12 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务池"
+                    "TaskPools"
                 ],
-                "summary": "添加一个任务池",
+                "summary": "Add a task pool",
                 "parameters": [
                     {
-                        "description": "任务池",
+                        "description": "Task pool",
                         "name": "pool",
                         "in": "body",
                         "required": true,
@@ -73,7 +73,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Task pool result",
                         "schema": {
                             "$ref": "#/definitions/service.TaskPoolResult"
                         }
@@ -83,7 +83,7 @@ const docTemplate = `{
         },
         "/v1/pools/{name}": {
             "get": {
-                "description": "获取任务池详情",
+                "description": "Get task pool details",
                 "consumes": [
                     "application/json"
                 ],
@@ -91,27 +91,27 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务池"
+                    "TaskPools"
                 ],
-                "summary": "获取任务池详情",
+                "summary": "Get task pool details",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务池名",
+                        "description": "Pool name",
                         "name": "name",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "boolean",
-                        "description": "是否获取详情",
+                        "description": "Get detailed info",
                         "name": "verbose",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Pool information",
                         "schema": {
                             "$ref": "#/definitions/task.TaskPoolDetail"
                         }
@@ -119,7 +119,7 @@ const docTemplate = `{
                 }
             },
             "put": {
-                "description": "更新任务池定义",
+                "description": "Update task pool definition",
                 "consumes": [
                     "application/json"
                 ],
@@ -127,19 +127,19 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务池"
+                    "TaskPools"
                 ],
-                "summary": "更新任务池",
+                "summary": "Update task pool",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务池ID",
+                        "description": "Task pool ID",
                         "name": "name",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "任务池",
+                        "description": "Task pool",
                         "name": "pools",
                         "in": "body",
                         "required": true,
@@ -150,7 +150,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Update task pool",
                         "schema": {
                             "$ref": "#/definitions/service.TaskPoolResult"
                         }
@@ -158,7 +158,7 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "删除任务池，同时删除关联的PoolResource",
+                "description": "Delete task pool and associated PoolResource",
                 "consumes": [
                     "application/json"
                 ],
@@ -166,13 +166,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务池"
+                    "TaskPools"
                 ],
-                "summary": "删除任务池",
+                "summary": "Delete task pool",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务池名",
+                        "description": "Pool name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -180,54 +180,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Delete success message",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Running tasks exist",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Pool not found",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
-                        "schema": {
-                            "$ref": "#/definitions/controllers.ResponseData"
-                        }
-                    }
-                }
-            }
-        },
-        "/v1/reload": {
-            "post": {
-                "description": "重新加载任务池相关配置，适用于池节点变更，节点资源变更，池轮询策略变更",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "任务池"
-                ],
-                "summary": "重新加载任务池相关配置",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "string"
-                        }
-                    },
-                    "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
@@ -237,7 +208,7 @@ const docTemplate = `{
         },
         "/v1/tasks": {
             "get": {
-                "description": "列举任务",
+                "description": "List tasks",
                 "consumes": [
                     "application/json"
                 ],
@@ -245,67 +216,67 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务"
+                    "Tasks"
                 ],
-                "summary": "列举任务",
+                "summary": "List tasks",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务名称",
+                        "description": "Task name",
                         "name": "name",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "命名空间",
+                        "description": "Namespace",
                         "name": "namespace",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "任务属主",
+                        "description": "Task owner",
                         "name": "owner",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "页码",
+                        "description": "Page number",
                         "name": "page",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "每页数量",
+                        "description": "Items per page",
                         "name": "pageSize",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "待运行资源池",
+                        "description": "Target resource pool",
                         "name": "pool",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "项目名称",
+                        "description": "Project name",
                         "name": "project",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "排序字段",
+                        "description": "Sort field",
                         "name": "sort",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "任务状态",
+                        "description": "Task status",
                         "name": "status",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "任务类名称",
+                        "description": "Template name",
                         "name": "template",
                         "in": "query"
                     },
@@ -317,14 +288,14 @@ const docTemplate = `{
                     },
                     {
                         "type": "boolean",
-                        "description": "输出任务实例详情",
+                        "description": "Output task details",
                         "name": "verbose",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Task list result",
                         "schema": {
                             "$ref": "#/definitions/dao.ListTasksResult"
                         }
@@ -332,7 +303,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "提交任务",
+                "description": "Submit task",
                 "consumes": [
                     "application/json"
                 ],
@@ -340,12 +311,12 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务"
+                    "Tasks"
                 ],
-                "summary": "提交任务",
+                "summary": "Submit task",
                 "parameters": [
                     {
-                        "description": "任务对象",
+                        "description": "Task object",
                         "name": "task",
                         "in": "body",
                         "required": true,
@@ -356,7 +327,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Task commit result (UUID, RunID)",
                         "schema": {
                             "$ref": "#/definitions/service.TaskCommitResult"
                         }
@@ -366,7 +337,7 @@ const docTemplate = `{
         },
         "/v1/tasks/{uuid}": {
             "get": {
-                "description": "获取任务元数据",
+                "description": "Get task metadata",
                 "consumes": [
                     "application/json"
                 ],
@@ -374,13 +345,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务"
+                    "Tasks"
                 ],
-                "summary": "获取任务元数据",
+                "summary": "Get task metadata",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务UUID",
+                        "description": "Task UUID",
                         "name": "uuid",
                         "in": "path",
                         "required": true
@@ -388,7 +359,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Task object details",
                         "schema": {
                             "$ref": "#/definitions/dao.TaskRec"
                         }
@@ -396,7 +367,7 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "停止任务",
+                "description": "Stop task",
                 "consumes": [
                     "application/json"
                 ],
@@ -404,13 +375,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务"
+                    "Tasks"
                 ],
-                "summary": "停止任务",
+                "summary": "Stop task",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务UUID",
+                        "description": "Task UUID",
                         "name": "uuid",
                         "in": "path",
                         "required": true
@@ -418,7 +389,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Operation success message",
                         "schema": {
                             "type": "string"
                         }
@@ -428,28 +399,29 @@ const docTemplate = `{
         },
         "/v1/tasks/{uuid}/logs": {
             "get": {
-                "description": "获取任务日志",
+                "description": "Get task logs with stream support (tail/follow) and regular pagination",
                 "consumes": [
                     "application/json"
                 ],
                 "produces": [
-                    "application/json"
+                    "application/json",
+                    " plain/text"
                 ],
                 "tags": [
-                    "任务"
+                    "Tasks"
                 ],
-                "summary": "获取任务日志",
+                "summary": "Get task logs",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务UUID",
+                        "description": "Task UUID",
                         "name": "uuid",
                         "in": "path",
                         "required": true
                     },
                     {
                         "type": "string",
-                        "description": "任务实体，任务可能启动多个实体(如线程，POD)",
+                        "description": "Entity that task may start multiple instances (e.g. threads, PODs)",
                         "name": "entity",
                         "in": "query"
                     },
@@ -471,9 +443,27 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Streaming log output",
                         "schema": {
-                            "$ref": "#/definitions/service.TaskLogsResult"
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Invalid request",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.ResponseData"
+                        }
+                    },
+                    "404": {
+                        "description": "Task not found",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.ResponseData"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/controllers.ResponseData"
                         }
                     }
                 }
@@ -481,7 +471,7 @@ const docTemplate = `{
         },
         "/v1/tasks/{uuid}/status": {
             "get": {
-                "description": "获取任务状态",
+                "description": "Get task status",
                 "consumes": [
                     "application/json"
                 ],
@@ -489,13 +479,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务"
+                    "Tasks"
                 ],
-                "summary": "获取任务状态",
+                "summary": "Get task status",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务UUID",
+                        "description": "Task UUID",
                         "name": "uuid",
                         "in": "path",
                         "required": true
@@ -503,7 +493,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Task status information",
                         "schema": {
                             "$ref": "#/definitions/service.TaskStatusResult"
                         }
@@ -513,7 +503,7 @@ const docTemplate = `{
         },
         "/v1/tasks/{uuid}/tags": {
             "get": {
-                "description": "获取任务标记",
+                "description": "Get task tags",
                 "consumes": [
                     "application/json"
                 ],
@@ -521,13 +511,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务"
+                    "Tasks"
                 ],
-                "summary": "获取任务标记",
+                "summary": "Get task tags",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务UUID",
+                        "description": "Task UUID",
                         "name": "uuid",
                         "in": "path",
                         "required": true
@@ -535,7 +525,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Task tags",
                         "schema": {
                             "$ref": "#/definitions/service.TaskTagsResult"
                         }
@@ -543,7 +533,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "给任务打标记，通常用于通知任务调度器对任务执行特定处置策略，比如标记为保障任务，空闲任务",
+                "description": "Tag task, usually to notify scheduler for specific handling strategy like guaranteed task or idle task",
                 "consumes": [
                     "application/json"
                 ],
@@ -551,19 +541,19 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务"
+                    "Tasks"
                 ],
-                "summary": "给任务打标记",
+                "summary": "Tag task",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务UUID",
+                        "description": "Task UUID",
                         "name": "uuid",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "标记内容，格式为Key=Value,可以同时有多组标记",
+                        "description": "Tag content in Key=Value format, multiple tags can be set simultaneously",
                         "name": "tags",
                         "in": "body",
                         "schema": {
@@ -576,9 +566,9 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "All tags of the task",
                         "schema": {
-                            "type": "string"
+                            "$ref": "#/definitions/service.TaskTagsResult"
                         }
                     }
                 }
@@ -586,7 +576,7 @@ const docTemplate = `{
         },
         "/v1/templates": {
             "get": {
-                "description": "任务模板",
+                "description": "Task templates",
                 "consumes": [
                     "application/json"
                 ],
@@ -594,20 +584,20 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务模板"
+                    "TaskTemplates"
                 ],
-                "summary": "列举任务模板",
+                "summary": "List task templates",
                 "parameters": [
                     {
                         "type": "boolean",
-                        "description": "是否获取详情",
+                        "description": "Include details",
                         "name": "verbose",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "List of task template names",
                         "schema": {
                             "type": "array",
                             "items": {
@@ -616,13 +606,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid request",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
@@ -630,7 +620,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "创建任务模板",
+                "description": "Create task template",
                 "consumes": [
                     "application/json"
                 ],
@@ -638,12 +628,12 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务模板"
+                    "TaskTemplates"
                 ],
-                "summary": "创建任务模板",
+                "summary": "Create task template",
                 "parameters": [
                     {
-                        "description": "任务模板",
+                        "description": "Template definition",
                         "name": "templates",
                         "in": "body",
                         "required": true,
@@ -654,7 +644,7 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Created template (ID+Name)",
                         "schema": {
                             "$ref": "#/definitions/controllers.AddTemplateResult"
                         }
@@ -664,7 +654,7 @@ const docTemplate = `{
         },
         "/v1/templates/{name}": {
             "get": {
-                "description": "获取任务模板",
+                "description": "Get task template",
                 "consumes": [
                     "application/json"
                 ],
@@ -672,13 +662,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务模板"
+                    "TaskTemplates"
                 ],
-                "summary": "获取任务模板",
+                "summary": "Get task template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务模板名称",
+                        "description": "Template name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -686,25 +676,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Task template details",
                         "schema": {
                             "$ref": "#/definitions/dao.TemplateRec"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid request",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Template not found",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
@@ -712,7 +702,7 @@ const docTemplate = `{
                 }
             },
             "put": {
-                "description": "更新任务模板",
+                "description": "Update task template",
                 "consumes": [
                     "application/json"
                 ],
@@ -720,19 +710,19 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务模板"
+                    "TaskTemplates"
                 ],
-                "summary": "更新任务模板",
+                "summary": "Update task template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务模板名称",
+                        "description": "Template name",
                         "name": "name",
                         "in": "path",
                         "required": true
                     },
                     {
-                        "description": "任务模板",
+                        "description": "Template definition",
                         "name": "templates",
                         "in": "body",
                         "required": true,
@@ -743,19 +733,19 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Template creation result (ID+Name)",
                         "schema": {
                             "$ref": "#/definitions/controllers.AddTemplateResult"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Invalid request",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
@@ -763,7 +753,7 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "删除任务模板",
+                "description": "Delete task template",
                 "consumes": [
                     "application/json"
                 ],
@@ -771,13 +761,13 @@ const docTemplate = `{
                     "application/json"
                 ],
                 "tags": [
-                    "任务模板"
+                    "TaskTemplates"
                 ],
-                "summary": "删除任务模板",
+                "summary": "Delete task template",
                 "parameters": [
                     {
                         "type": "string",
-                        "description": "任务模板名称",
+                        "description": "Template name",
                         "name": "name",
                         "in": "path",
                         "required": true
@@ -785,25 +775,25 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Delete success message",
                         "schema": {
                             "type": "string"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Tasks using this template exist",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
                     },
                     "404": {
-                        "description": "Not Found",
+                        "description": "Template not found",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Internal server error",
                         "schema": {
                             "$ref": "#/definitions/controllers.ResponseData"
                         }
@@ -854,19 +844,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "id": {
-                    "description": "记录ID",
+                    "description": "record ID",
                     "type": "integer"
                 },
                 "pool_id": {
-                    "description": "任务池ID",
+                    "description": "pool ID",
                     "type": "string"
                 },
                 "res_name": {
-                    "description": "资源名称",
+                    "description": "resource name",
                     "type": "string"
                 },
                 "res_num": {
-                    "description": "资源数量",
+                    "description": "resource quantity",
                     "type": "string"
                 }
             }
@@ -875,59 +865,55 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "args": {
-                    "description": "该任务的用户参数， JSON格式",
+                    "description": "User arguments for task (JSON)",
                     "type": "string"
                 },
                 "callback": {
-                    "description": "回调URL",
+                    "description": "Callback URL",
                     "type": "string"
                 },
                 "created_by": {
-                    "description": "创建者",
+                    "description": "Creator",
                     "type": "string"
                 },
                 "extra": {
-                    "description": "该任务模板的额外信息， JSON格式",
+                    "description": "Extra info for template (JSON)",
                     "type": "string"
                 },
                 "name": {
-                    "description": "任务名",
+                    "description": "Task name",
                     "type": "string"
                 },
                 "namespace": {
-                    "description": "数据空间名",
+                    "description": "Namespace",
                     "type": "string"
                 },
                 "pool": {
-                    "description": "任务池",
+                    "description": "Task pool",
                     "type": "string"
                 },
                 "project": {
-                    "description": "项目名",
+                    "description": "Project name",
                     "type": "string"
                 },
                 "quotas": {
-                    "description": "资源配额， JSON格式",
+                    "description": "Resource quotas (JSON)",
                     "type": "string"
                 },
                 "tags": {
-                    "description": "标记,可影响调度,JSON格式:[key=value]",
+                    "description": "Tags affecting scheduling (JSON key=value)",
                     "type": "string"
                 },
                 "template": {
-                    "description": "任务模板名",
+                    "description": "Template name",
                     "type": "string"
                 },
                 "timeout": {
-                    "description": "各阶段超时时间， JSON格式",
-                    "type": "string"
-                },
-                "updated_by": {
-                    "description": "更新者",
+                    "description": "Timeout settings (JSON)",
                     "type": "string"
                 },
                 "uuid": {
-                    "description": "任务UUID",
+                    "description": "Task UUID",
                     "type": "string"
                 }
             }
@@ -936,99 +922,95 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "args": {
-                    "description": "该任务的用户参数， JSON格式",
+                    "description": "User arguments for task (JSON)",
                     "type": "string"
                 },
                 "callback": {
-                    "description": "回调URL",
+                    "description": "Callback URL",
                     "type": "string"
                 },
                 "create_time": {
-                    "description": "创建时间",
+                    "description": "Creation time",
                     "type": "string"
                 },
                 "created_by": {
-                    "description": "创建者",
+                    "description": "Creator",
                     "type": "string"
                 },
                 "end_log": {
-                    "description": "最终日志",
+                    "description": "Final logs",
                     "type": "string"
                 },
                 "end_time": {
-                    "description": "结束运行时间",
+                    "description": "End time",
                     "type": "string"
                 },
                 "error": {
-                    "description": "出错说明",
+                    "description": "Error message",
                     "type": "string"
                 },
                 "extra": {
-                    "description": "该任务模板的额外信息， JSON格式",
+                    "description": "Extra info for template (JSON)",
                     "type": "string"
                 },
                 "name": {
-                    "description": "任务名",
+                    "description": "Task name",
                     "type": "string"
                 },
                 "namespace": {
-                    "description": "数据空间名",
+                    "description": "Namespace",
                     "type": "string"
                 },
                 "pool": {
-                    "description": "任务池",
+                    "description": "Task pool",
                     "type": "string"
                 },
                 "project": {
-                    "description": "项目名",
+                    "description": "Project name",
                     "type": "string"
                 },
                 "quotas": {
-                    "description": "资源配额， JSON格式",
+                    "description": "Resource quotas (JSON)",
                     "type": "string"
                 },
                 "running_time": {
-                    "description": "开始运行时间",
+                    "description": "Running start time",
                     "type": "string"
                 },
                 "start_time": {
-                    "description": "启动时间",
+                    "description": "Start time",
                     "type": "string"
                 },
                 "status": {
-                    "description": "任务状态",
+                    "description": "Task status",
                     "type": "string"
                 },
                 "tags": {
-                    "description": "标记,可影响调度,JSON格式:[key=value]",
+                    "description": "Tags affecting scheduling (JSON key=value)",
                     "type": "string"
                 },
                 "template": {
-                    "description": "任务模板名",
+                    "description": "Template name",
                     "type": "string"
                 },
                 "timeout": {
-                    "description": "各阶段超时时间， JSON格式",
+                    "description": "Timeout settings (JSON)",
                     "type": "string"
                 },
                 "update_time": {
-                    "description": "最后更新时间",
-                    "type": "string"
-                },
-                "updated_by": {
-                    "description": "更新者",
+                    "description": "Last update time",
                     "type": "string"
                 },
                 "uuid": {
-                    "description": "任务UUID",
+                    "description": "Task UUID",
                     "type": "string"
                 },
                 "warning": {
-                    "description": "告警信息",
+                    "description": "Warning message",
                     "type": "string"
                 },
                 "yaml_content": {
-                    "description": "部署文件内容",
+                    "description": "Deployment file content",
                     "type": "string"
                 }
             }
@@ -1085,19 +1067,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "config": {
-                    "description": "任务池配置，供各类型任务引擎使用",
+                    "description": "pool configuration for various task engines",
                     "type": "string"
                 },
                 "description": {
-                    "description": "任务池说明，展示任务池的关键信息，供用户了解任务池工作状况",
+                    "description": "pool description showing key information for user understanding",
                     "type": "string"
                 },
                 "engine": {
-                    "description": "采用的任务执行引擎",
+                    "description": "task execution engine",
                     "type": "string"
                 },
                 "pool_id": {
-                    "description": "任务池ID",
+                    "description": "pool ID",
                     "type": "string"
                 },
                 "resources": {
@@ -1107,11 +1089,11 @@ const docTemplate = `{
                     }
                 },
                 "running": {
-                    "description": "最大并发任务数",
+                    "description": "maximum concurrent tasks",
                     "type": "integer"
                 },
                 "waiting": {
-                    "description": "最大排队任务数",
+                    "description": "maximum queued tasks",
                     "type": "integer"
                 }
             }
@@ -1167,19 +1149,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "allocate": {
-                    "description": "分配量",
+                    "description": "allocated amount",
                     "type": "string"
                 },
                 "capacity": {
-                    "description": "配置量",
+                    "description": "configured capacity",
                     "type": "string"
                 },
                 "name": {
-                    "description": "资源名称",
+                    "description": "resource name",
                     "type": "string"
                 },
                 "remain": {
-                    "description": "实际残留",
+                    "description": "actual remaining",
                     "type": "string"
                 }
             }
@@ -1188,51 +1170,54 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "create_time": {
-                    "description": "入队时间",
+                    "description": "queue time",
                     "type": "string"
                 },
                 "created_by": {
-                    "description": "用户标记",
+                    "description": "created by",
                     "type": "string"
                 },
                 "end_time": {
-                    "description": "结束运行的时间",
+                    "description": "end time",
                     "type": "string"
                 },
                 "error": {
-                    "description": "出错说明",
+                    "description": "error message",
                     "type": "string"
                 },
                 "name": {
-                    "description": "任务名字",
+                    "description": "task name",
                     "type": "string"
                 },
                 "pool": {
-                    "description": "在哪个任务池运行",
+                    "description": "running pool",
                     "type": "string"
                 },
                 "running_time": {
-                    "description": "开始正常运行的时间",
+                    "description": "actual running start time",
                     "type": "string"
                 },
                 "start_time": {
-                    "description": "启动时间",
+                    "description": "start time",
                     "type": "string"
                 },
                 "status": {
-                    "description": "任务状态",
+                    "description": "task status",
                     "type": "string"
                 },
                 "tags": {
-                    "description": "标记",
-                    "type": "string"
+                    "description": "tags",
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "string"
+                    }
                 },
                 "uuid": {
-                    "description": "任务唯一ID",
+                    "description": "task unique ID",
                     "type": "string"
                 },
                 "warning": {
-                    "description": "告警信息",
+                    "description": "warning message",
                     "type": "string"
                 }
             }
@@ -1241,33 +1226,45 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "config": {
-                    "description": "任务池配置",
+                    "description": "task pool configuration",
                     "type": "string"
                 },
+                "engine": {
+                    "description": "task pool engine",
+                    "type": "string"
+                },
+                "max_running": {
+                    "description": "maximum parallel tasks",
+                    "type": "integer"
+                },
+                "max_waiting": {
+                    "description": "maximum waiting tasks",
+                    "type": "integer"
+                },
                 "pool_id": {
-                    "description": "任务池标识",
+                    "description": "Pool ID",
                     "type": "string"
                 },
                 "resources": {
-                    "description": "该任务池的资源信息",
+                    "description": "resource information of the pool",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/task.ResourceItem"
                     }
                 },
                 "running": {
-                    "description": "正在该任务池运行的任务数",
+                    "description": "current running tasks",
                     "type": "integer"
                 },
                 "tasks": {
-                    "description": "等待该任务池或在其中运行的任务信息",
+                    "description": "task information in queue or running",
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/task.TaskInstanceSummary"
                     }
                 },
                 "waiting": {
-                    "description": "正在等待该任务池的任务数",
+                    "description": "current waiting tasks",
                     "type": "integer"
                 }
             }
@@ -1276,19 +1273,31 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "config": {
-                    "description": "任务池配置",
+                    "description": "Pool configuration",
                     "type": "string"
                 },
+                "engine": {
+                    "description": "Task engine used by pool",
+                    "type": "string"
+                },
+                "max_running": {
+                    "description": "Maximum concurrent tasks",
+                    "type": "integer"
+                },
+                "max_waiting": {
+                    "description": "Maximum queued tasks",
+                    "type": "integer"
+                },
                 "pool_id": {
-                    "description": "任务池标识",
+                    "description": "Pool identifier",
                     "type": "string"
                 },
                 "running": {
-                    "description": "正在该任务池运行的任务数",
+                    "description": "Number of tasks currently running in pool",
                     "type": "integer"
                 },
                 "waiting": {
-                    "description": "正在该任务池等待的任务数",
+                    "description": "Number of tasks currently waiting in pool",
                     "type": "integer"
                 }
             }
@@ -1298,12 +1307,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0 版本",
+	Version:          "1.0",
 	Host:             "",
 	BasePath:         "/taskd/api",
 	Schemes:          []string{},
-	Title:            "任务管理",
-	Description:      "任务管理",
+	Title:            "Task Management",
+	Description:      "Task Management System",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
